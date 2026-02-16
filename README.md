@@ -1,6 +1,6 @@
 # Blindfold Chess Trainer
 
-Train blindfold chess visualization with adaptive exercises, streaks, and progress analytics in an installable web app.
+Train blindfold visualization with simple focused sessions: square color, mate-in-1, and mate-in-2.
 
 ## Quick Start
 
@@ -11,6 +11,12 @@ npm run dev
 ```
 
 Open `http://localhost:5173`.
+
+Session flow:
+- Pick one category.
+- Start session.
+- Solve continuously (auto-saves after every answer).
+- End session manually or just close the app; unfinished sessions are closed automatically on next open.
 
 To run tests and build:
 
@@ -38,8 +44,8 @@ For GitHub Pages deployment, set `VITE_BASE_PATH=/blindfold-exercises/`.
 
 - React 18 + TypeScript
 - Vite 6 + `vite-plugin-pwa`
-- Zustand (runtime state)
 - TanStack Query (sync mutation handling)
 - `chess.js` (position/move logic)
-- Recharts (progress dashboard)
+- `react-chessboard` (board UI)
 - Supabase (GitHub auth + cloud sync)
+- Lichess Puzzle API (mate puzzle import)

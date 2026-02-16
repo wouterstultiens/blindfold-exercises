@@ -1,62 +1,69 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { updateStageSnapshot } from "./engine/adaptive";
-import { evaluateAnswer } from "./engine/exercises";
-import { buildAdaptiveSession } from "./engine/session";
+import { chooseNextDifficulty, updateStageSnapshot } from "./engine/adaptive";
+import { createMateExercise, evaluateAnswer, generateExercise, stageDisplayName } from "./engine/exercises";
 import { updateProfileAfterSession, xpForAttempt } from "./engine/scoring";
 import { Dashboard } from "./components/Dashboard";
 import { ExerciseCard } from "./components/ExerciseCard";
 import {
-  addReviewItem,
   appendAttempt,
   appendSession,
   getAttempts,
   getProfile,
   getSessions,
   getSnapshots,
-  popDueReviewItems,
   saveAttempts,
   saveProfile,
   saveSessions,
   saveSnapshots,
+  upsertSession,
   upsertSnapshot
 } from "./services/localDb";
+import { getNextMatePuzzle } from "./services/puzzleProvider";
 import { getSupabaseClient, hasSupabaseConfig, signInWithGitHub, signOut } from "./services/supabase";
 import { syncLocalProgress } from "./services/sync";
-import { useAppStore } from "./store/useAppStore";
-import type { AttemptRecord, ExerciseItem, ProgressSnapshot, SessionRecord, UserProfile } from "./types";
+import type {
+  AttemptRecord,
+  ExerciseItem,
+  ExerciseStage,
+  ProgressSnapshot,
+  SessionRecord,
+  SessionSummary,
+  UserProfile
+} from "./types";
 
 const GUEST_ID = "guest-local";
+const CATEGORY_OPTIONS: ExerciseStage[] = ["square_color", "mate_in_1", "mate_in_2"];
 
 function createId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function dueInMinutes(minutes: number): string {
-  const date = new Date();
-  date.setMinutes(date.getMinutes() + minutes);
-  return date.toISOString();
+function appendOrReplaceSession(allSessions: SessionRecord[], nextSession: SessionRecord): SessionRecord[] {
+  const index = allSessions.findIndex((session) => session.id === nextSession.id);
+  if (index < 0) {
+    return [...allSessions, nextSession];
+  }
+  const copy = [...allSessions];
+  copy[index] = nextSession;
+  return copy;
 }
 
 export default function App() {
   const [userId, setUserId] = useState<string>(GUEST_ID);
   const [displayName, setDisplayName] = useState<string>("Guest");
-  const [audioEnabled, setAudioEnabled] = useState<boolean>(false);
+  const [selectedStage, setSelectedStage] = useState<ExerciseStage>("square_color");
   const [allAttempts, setAllAttempts] = useState<AttemptRecord[]>([]);
   const [allSessions, setAllSessions] = useState<SessionRecord[]>([]);
   const [allSnapshots, setAllSnapshots] = useState<ProgressSnapshot[]>([]);
   const [profile, setProfile] = useState<UserProfile>(() => getProfile(GUEST_ID, "Guest"));
-  const [syncMessage, setSyncMessage] = useState<string>("Local mode active.");
+  const [activeSession, setActiveSession] = useState<SessionRecord | null>(null);
+  const [currentItem, setCurrentItem] = useState<ExerciseItem | null>(null);
+  const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [feedback, setFeedback] = useState<string>("");
+  const [syncMessage, setSyncMessage] = useState<string>("Local mode active.");
+  const [isLoadingItem, setIsLoadingItem] = useState<boolean>(false);
   const [isBootstrapped, setIsBootstrapped] = useState<boolean>(false);
-
-  const runtime = useAppStore((state) => state.runtime);
-  const summary = useAppStore((state) => state.summary);
-  const startSession = useAppStore((state) => state.startSession);
-  const addAttemptToRuntime = useAppStore((state) => state.addAttempt);
-  const nextItem = useAppStore((state) => state.nextItem);
-  const finishRuntimeSession = useAppStore((state) => state.finishSession);
-  const resetSummary = useAppStore((state) => state.resetSummary);
 
   useEffect(() => {
     setAllAttempts(getAttempts());
@@ -106,6 +113,10 @@ export default function App() {
 
   useEffect(() => {
     setProfile(getProfile(userId, displayName));
+    setSummary(null);
+    setFeedback("");
+    setCurrentItem(null);
+    setActiveSession(null);
   }, [userId, displayName]);
 
   const attempts = useMemo(() => allAttempts.filter((attempt) => attempt.user_id === userId), [allAttempts, userId]);
@@ -160,50 +171,144 @@ export default function App() {
     return () => window.removeEventListener("online", onOnline);
   }, [syncMutation]);
 
-  const currentItem: ExerciseItem | null = runtime ? runtime.items[runtime.currentIndex] ?? null : null;
+  useEffect(() => {
+    if (!isBootstrapped) return;
+    const staleActive = sessions.filter((session) => session.status === "active");
+    if (staleActive.length === 0) return;
 
-  const beginSession = () => {
-    resetSummary();
-    setFeedback("");
-    const reviewItems = popDueReviewItems(4);
-    const items = buildAdaptiveSession(attempts, snapshots, reviewItems, 16);
-    startSession(createId("session"), items);
-  };
+    let nextProfile = getProfile(userId, displayName);
+    let nextSessions = [...allSessions];
 
-  const finalizeSession = (finalAttempts: AttemptRecord[]) => {
-    if (!runtime) return;
-    const started = new Date(runtime.startedAt).getTime();
-    const ended = Date.now();
-    const durationS = Math.max(1, Math.round((ended - started) / 1000));
-    const xpEarned = finalAttempts.reduce((sum, attempt) => sum + xpForAttempt(attempt, profile.streak), 0);
+    for (const stale of staleActive) {
+      const sessionAttempts = getAttempts().filter(
+        (attempt) => attempt.session_id === stale.id && attempt.user_id === stale.user_id
+      );
+      const closedAt = new Date().toISOString();
+      const durationS = Math.max(1, Math.round((Date.parse(closedAt) - Date.parse(stale.started_at)) / 1000));
+      const xpEarned = sessionAttempts.reduce((sum, attempt) => sum + xpForAttempt(attempt, nextProfile.streak), 0);
+      const baseCompleted: SessionRecord = {
+        ...stale,
+        ended_at: closedAt,
+        duration_s: durationS,
+        xp_earned: xpEarned,
+        status: "completed",
+        synced: false
+      };
+      if (sessionAttempts.length > 0) {
+        const profiled = updateProfileAfterSession(nextProfile, baseCompleted, sessionAttempts, snapshots);
+        nextProfile = profiled;
+        nextSessions = appendOrReplaceSession(nextSessions, { ...baseCompleted, streak_after: profiled.streak });
+      } else {
+        nextSessions = appendOrReplaceSession(nextSessions, baseCompleted);
+      }
+    }
 
-    const sessionRecord: SessionRecord = {
-      id: runtime.id,
-      user_id: userId,
-      started_at: runtime.startedAt,
-      ended_at: new Date().toISOString(),
-      duration_s: durationS,
-      xp_earned: xpEarned,
-      streak_after: profile.streak,
-      synced: false
-    };
-
-    const nextProfile = updateProfileAfterSession(profile, sessionRecord, finalAttempts, snapshots);
-    const finalizedSession = { ...sessionRecord, streak_after: nextProfile.streak };
     setProfile(nextProfile);
     saveProfile(nextProfile);
+    setAllSessions(nextSessions);
+    saveSessions(nextSessions);
+    setActiveSession(null);
+    setCurrentItem(null);
+    setFeedback("Previous unfinished session was closed and saved.");
+  }, [isBootstrapped, userId, displayName, sessions, allSessions, allAttempts, snapshots]);
 
-    appendSession(finalizedSession);
-    setAllSessions((previous) => [...previous, finalizedSession]);
-    finishRuntimeSession(finalizedSession);
-  };
+  function persistSession(nextSession: SessionRecord): void {
+    upsertSession(nextSession);
+    setAllSessions((previous) => appendOrReplaceSession(previous, nextSession));
+    setActiveSession((previous) => (previous?.id === nextSession.id ? nextSession : previous));
+  }
 
-  const handleSubmit = (answer: string, confidence: 1 | 2 | 3 | 4 | 5, latencyMs: number) => {
-    if (!runtime || !currentItem) return;
+  function difficultyForStage(stage: ExerciseStage): number {
+    const snapshot = snapshots.find((row) => row.stage === stage);
+    const stageAttempts = attempts.filter((attempt) => attempt.stage === stage).slice(-25);
+    return chooseNextDifficulty(snapshot, stageAttempts);
+  }
+
+  async function loadNextItem(stage: ExerciseStage): Promise<void> {
+    setIsLoadingItem(true);
+    try {
+      const difficulty = difficultyForStage(stage);
+      const next =
+        stage === "square_color"
+          ? generateExercise("square_color", difficulty)
+          : createMateExercise(stage, difficulty, await getNextMatePuzzle(stage));
+      setCurrentItem(next);
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Failed to load puzzle.");
+    } finally {
+      setIsLoadingItem(false);
+    }
+  }
+
+  function startSession(): void {
+    if (activeSession) {
+      return;
+    }
+    setSummary(null);
+    setFeedback("");
+    const now = new Date().toISOString();
+    const session: SessionRecord = {
+      id: createId("session"),
+      user_id: userId,
+      started_at: now,
+      ended_at: now,
+      duration_s: 0,
+      xp_earned: 0,
+      streak_after: profile.streak,
+      focus_stage: selectedStage,
+      status: "active",
+      attempt_count: 0,
+      synced: false
+    };
+    appendSession(session);
+    setAllSessions((previous) => [...previous, session]);
+    setActiveSession(session);
+    void loadNextItem(selectedStage);
+  }
+
+  function finishSession(session: SessionRecord): void {
+    const endedAt = new Date().toISOString();
+    const sessionAttempts = getAttempts().filter(
+      (attempt) => attempt.session_id === session.id && attempt.user_id === session.user_id
+    );
+    const durationS = Math.max(1, Math.round((Date.parse(endedAt) - Date.parse(session.started_at)) / 1000));
+    const xpEarned = sessionAttempts.reduce((sum, attempt) => sum + xpForAttempt(attempt, profile.streak), 0);
+    const completedBase: SessionRecord = {
+      ...session,
+      ended_at: endedAt,
+      duration_s: durationS,
+      xp_earned: xpEarned,
+      status: "completed",
+      synced: false
+    };
+    const nextProfile =
+      sessionAttempts.length > 0 ? updateProfileAfterSession(profile, completedBase, sessionAttempts, snapshots) : profile;
+    const completed = { ...completedBase, streak_after: nextProfile.streak };
+
+    setProfile(nextProfile);
+    saveProfile(nextProfile);
+    persistSession(completed);
+    setActiveSession(null);
+    setCurrentItem(null);
+    setSummary({
+      attempts: sessionAttempts,
+      correctCount: sessionAttempts.filter((attempt) => attempt.correct).length,
+      totalCount: sessionAttempts.length,
+      accuracy:
+        sessionAttempts.length === 0
+          ? 0
+          : sessionAttempts.filter((attempt) => attempt.correct).length / sessionAttempts.length,
+      xp: xpEarned,
+      durationS
+    });
+  }
+
+  async function handleSubmit(answer: string, latencyMs: number): Promise<void> {
+    if (!activeSession || !currentItem) return;
     const evaluation = evaluateAnswer(currentItem, answer);
     const attempt: AttemptRecord = {
       id: createId("attempt"),
-      session_id: runtime.id,
+      session_id: activeSession.id,
       user_id: userId,
       item_id: currentItem.id,
       stage: currentItem.stage,
@@ -213,20 +318,17 @@ export default function App() {
       correct: evaluation.correct,
       latency_ms: latencyMs,
       difficulty: currentItem.difficulty,
-      confidence,
+      confidence: 3,
       created_at: new Date().toISOString(),
       synced: false
     };
 
     appendAttempt(attempt);
     setAllAttempts((previous) => [...previous, attempt]);
-    addAttemptToRuntime(attempt);
 
-    if (!attempt.correct) {
-      addReviewItem(currentItem, dueInMinutes(2));
-    }
-
-    const stageAttempts = [...attempts.filter((row) => row.stage === attempt.stage), attempt];
+    const stageAttempts = getAttempts()
+      .filter((row) => row.user_id === userId && row.stage === attempt.stage)
+      .slice(-25);
     const previousSnapshot = snapshots.find((snapshot) => snapshot.stage === attempt.stage);
     const nextSnapshot = updateStageSnapshot(attempt.stage, userId, previousSnapshot, stageAttempts);
     upsertSnapshot(nextSnapshot);
@@ -240,18 +342,17 @@ export default function App() {
       return copy;
     });
 
-    setFeedback(
-      evaluation.correct ? `Correct (+${xpForAttempt(attempt, profile.streak)} XP)` : `Incorrect. Expected ${evaluation.expected}`
-    );
+    const updatedSession: SessionRecord = {
+      ...activeSession,
+      attempt_count: activeSession.attempt_count + 1,
+      synced: false
+    };
+    persistSession(updatedSession);
 
-    const reachedEnd = runtime.currentIndex >= runtime.items.length - 1;
-    if (reachedEnd) {
-      const finalAttempts = [...runtime.attempts, attempt];
-      finalizeSession(finalAttempts);
-      return;
-    }
-    nextItem();
-  };
+    const gained = xpForAttempt(attempt, profile.streak);
+    setFeedback(evaluation.correct ? `Correct (+${gained} XP)` : `Incorrect. Expected ${evaluation.expected}`);
+    await loadNextItem(updatedSession.focus_stage);
+  }
 
   if (!isBootstrapped) {
     return <div className="app-shell">Loading...</div>;
@@ -264,7 +365,7 @@ export default function App() {
       <header className="topbar">
         <div>
           <h1>Blindfold Chess Trainer</h1>
-          <p className="muted">Adaptive training for visualization and calculation depth</p>
+          <p className="muted">Simple focused practice: square color, mate in 1, mate in 2</p>
         </div>
         <div className="top-actions">
           <span className="pill">{signedIn ? `Signed in as ${displayName}` : "Guest mode"}</span>
@@ -283,19 +384,33 @@ export default function App() {
       <main className="main-grid">
         <section className="panel">
           <h2>Training</h2>
-          <p className="muted">Default session length: 10-20 minutes with adaptive difficulty.</p>
+          <p className="muted">Choose one category and train continuously. Progress saves after every answer.</p>
           <div className="controls">
-            <button type="button" className="btn primary" onClick={beginSession} disabled={Boolean(runtime)}>
-              Start Today&apos;s Session
-            </button>
-            <label className="switch">
-              <input
-                type="checkbox"
-                checked={audioEnabled}
-                onChange={(event) => setAudioEnabled(event.target.checked)}
-              />
-              <span>Audio prompts</span>
+            <label className="field">
+              <span>Category</span>
+              <select
+                value={selectedStage}
+                onChange={(event) => setSelectedStage(event.target.value as ExerciseStage)}
+                disabled={Boolean(activeSession)}
+              >
+                {CATEGORY_OPTIONS.map((stage) => (
+                  <option key={stage} value={stage}>
+                    {stageDisplayName(stage)}
+                  </option>
+                ))}
+              </select>
             </label>
+            <button type="button" className="btn primary" onClick={startSession} disabled={Boolean(activeSession)}>
+              Start Session
+            </button>
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => (activeSession ? finishSession(activeSession) : undefined)}
+              disabled={!activeSession}
+            >
+              End Session
+            </button>
             <button
               type="button"
               className="btn secondary"
@@ -308,13 +423,14 @@ export default function App() {
           <p className="muted">{syncMessage}</p>
           {feedback ? <p className="feedback">{feedback}</p> : null}
 
-          {currentItem ? (
+          {currentItem && activeSession ? (
             <ExerciseCard
               item={currentItem}
-              index={runtime?.currentIndex ?? 0}
-              total={runtime?.items.length ?? 0}
-              audioEnabled={audioEnabled}
-              onSubmit={handleSubmit}
+              attemptsInSession={activeSession.attempt_count}
+              disabled={isLoadingItem}
+              onSubmit={(answer, latencyMs) => {
+                void handleSubmit(answer, latencyMs);
+              }}
             />
           ) : summary ? (
             <article className="session-summary">
@@ -330,7 +446,7 @@ export default function App() {
           )}
         </section>
 
-        <Dashboard profile={profile} attempts={attempts} sessions={sessions} snapshots={snapshots} />
+        <Dashboard profile={profile} attempts={attempts} sessions={sessions} />
       </main>
     </div>
   );

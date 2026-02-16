@@ -1,78 +1,36 @@
-export interface PuzzleDefinition {
+export interface FallbackPuzzle {
   id: string;
   fen: string;
-  bestMove: string;
-  choices: string[];
+  solutionUci: string;
   theme: string;
-  lineHint: string;
 }
 
-export const MEMORY_PUZZLES: PuzzleDefinition[] = [
+export const MATE_IN_1_FALLBACK: FallbackPuzzle[] = [
   {
-    id: "puzzle-001",
-    fen: "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 2 3",
-    bestMove: "Bxf7+",
-    choices: ["Bxf7+", "Nc3", "O-O", "d4"],
-    theme: "Italian tactical shot",
-    lineHint: "Sacrifice to gain king activity."
+    id: "fallback-m1-1",
+    fen: "r4q1r/p3b1pk/1n2p2p/4n3/3PN3/3Q4/PPP2PPP/R1B2RK1 w - - 0 17",
+    solutionUci: "e4f6",
+    theme: "Knight jump mate"
   },
   {
-    id: "puzzle-002",
-    fen: "r1bq1rk1/ppp2ppp/2n2n2/2bp4/2B5/2N1PN2/PPQ2PPP/R1B2RK1 w - - 0 8",
-    bestMove: "Nxd5",
-    choices: ["Nxd5", "Rd1", "a3", "b3"],
-    theme: "Center tactic",
-    lineHint: "Exploit pinned piece and overloaded defender."
-  },
-  {
-    id: "puzzle-003",
-    fen: "2r2rk1/pp2qppp/2n1pn2/2bp4/4P3/2NP1N2/PPQ2PPP/2R2RK1 w - - 4 12",
-    bestMove: "Nxd5",
-    choices: ["Nxd5", "e5", "Qa4", "Rfd1"],
-    theme: "Static weakness conversion",
-    lineHint: "Use a tactical trade to improve piece placement."
-  },
-  {
-    id: "puzzle-004",
-    fen: "4r1k1/1pp2ppp/p1n5/3N4/1b1P4/1B3N2/PP3PPP/3R2K1 w - - 0 20",
-    bestMove: "Nxb4",
-    choices: ["Nxb4", "Nf6+", "Bd2", "a3"],
-    theme: "Loose piece pickup",
-    lineHint: "Find the undefended piece before calculating checks."
-  },
-  {
-    id: "puzzle-005",
-    fen: "2r2rk1/pp1n1ppp/2pbpn2/q2p4/3P4/2NBPN2/PPQ2PPP/2RR2K1 w - - 2 11",
-    bestMove: "e4",
-    choices: ["e4", "a3", "Ne5", "Qe2"],
-    theme: "Space gain and tactical threat",
-    lineHint: "Push with tempo and open tactical lines."
+    id: "fallback-m1-2",
+    fen: "2kr4/ppp1Q2p/6p1/8/8/3r1qnP/PP6/1KR1R3 w - - 2 29",
+    solutionUci: "e7c7",
+    theme: "Back-rank break"
   }
 ];
 
-export const CALCULATION_PUZZLES: PuzzleDefinition[] = [
+export const MATE_IN_2_FALLBACK: FallbackPuzzle[] = [
   {
-    id: "calc-001",
-    fen: "r2q1rk1/ppp2ppp/2n2n2/2bp4/2B5/2N2N2/PPQ2PPP/R1B2RK1 w - - 2 9",
-    bestMove: "Nxd5",
-    choices: ["Nxd5", "Rd1", "a3", "Bd2"],
-    theme: "Intermediate exchange sequence",
-    lineHint: "Calculate captures and recaptures to depth 3."
+    id: "fallback-m2-1",
+    fen: "6k1/pR2Qp1p/2p3p1/8/4K3/4P1PP/P7/3q4 b - - 6 31",
+    solutionUci: "d1d5",
+    theme: "Queen ladder finish"
   },
   {
-    id: "calc-002",
-    fen: "2r2rk1/pp3ppp/2n1pn2/2bp4/3P4/2NBPN2/PP3PPP/2RR2K1 w - - 0 13",
-    bestMove: "Nxd5",
-    choices: ["Nxd5", "dxc5", "a3", "Qe2"],
-    theme: "Central break timing",
-    lineHint: "Visualize whether the center resolves favorably."
-  },
-  {
-    id: "calc-003",
-    fen: "r1b2rk1/pp3ppp/2n1pn2/2bp4/2P5/2N1PN2/PP2BPPP/R1BQ1RK1 w - - 0 9",
-    bestMove: "cxd5",
-    choices: ["cxd5", "a3", "b3", "Qa4"],
-    theme: "Structural conversion",
-    lineHint: "Compute forcing line before committing."
+    id: "fallback-m2-2",
+    fen: "6k1/2p5/2Q1pK2/3pPp2/1p1P2q1/7N/PPP3PP/8 b - - 10 35",
+    solutionUci: "g4g7",
+    theme: "Queen chase"
   }
 ];

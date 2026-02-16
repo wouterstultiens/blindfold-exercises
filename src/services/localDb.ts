@@ -22,6 +22,23 @@ function saveToStorage<T>(key: string, value: T): void {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+function normalizeSession(raw: Partial<SessionRecord>): SessionRecord {
+  const startedAt = raw.started_at ?? new Date().toISOString();
+  return {
+    id: raw.id ?? `session-${Date.now()}`,
+    user_id: raw.user_id ?? "guest-local",
+    started_at: startedAt,
+    ended_at: raw.ended_at ?? startedAt,
+    duration_s: raw.duration_s ?? 0,
+    xp_earned: raw.xp_earned ?? 0,
+    streak_after: raw.streak_after ?? 0,
+    focus_stage: raw.focus_stage ?? "square_color",
+    status: raw.status ?? "completed",
+    attempt_count: raw.attempt_count ?? 0,
+    synced: raw.synced
+  };
+}
+
 export function getAttempts(): AttemptRecord[] {
   return loadFromStorage(ATTEMPTS_KEY, []);
 }
@@ -37,7 +54,8 @@ export function appendAttempt(attempt: AttemptRecord): void {
 }
 
 export function getSessions(): SessionRecord[] {
-  return loadFromStorage(SESSIONS_KEY, []);
+  const raw = loadFromStorage<Partial<SessionRecord>[]>(SESSIONS_KEY, []);
+  return raw.map(normalizeSession);
 }
 
 export function saveSessions(sessions: SessionRecord[]): void {
@@ -45,9 +63,22 @@ export function saveSessions(sessions: SessionRecord[]): void {
 }
 
 export function appendSession(session: SessionRecord): void {
+  upsertSession(session);
+}
+
+export function upsertSession(nextSession: SessionRecord): void {
   const sessions = getSessions();
-  sessions.push(session);
+  const index = sessions.findIndex((session) => session.id === nextSession.id);
+  if (index >= 0) {
+    sessions[index] = nextSession;
+  } else {
+    sessions.push(nextSession);
+  }
   saveSessions(sessions);
+}
+
+export function activeSessionsForUser(userId: string): SessionRecord[] {
+  return getSessions().filter((session) => session.user_id === userId && session.status === "active");
 }
 
 export function getSnapshots(): ProgressSnapshot[] {

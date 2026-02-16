@@ -88,6 +88,20 @@ p {
   align-items: center;
 }
 
+.field {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.field select {
+  border: 1px solid #94a3b8;
+  border-radius: 10px;
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+  background: #fff;
+}
+
 .btn {
   border: none;
   border-radius: 10px;
@@ -191,38 +205,11 @@ p {
 .board-wrap {
   display: grid;
   gap: 0.4rem;
+  justify-items: start;
 }
 
-.board {
-  width: min(360px, 100%);
-  aspect-ratio: 1;
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  border: 3px solid #1e293b;
-}
-
-.square {
-  display: grid;
-  place-items: center;
-  font-size: clamp(1rem, 2.5vw, 1.45rem);
-}
-
-.square.light {
-  background: #f1f5f9;
-}
-
-.square.dark {
-  background: #94a3b8;
-}
-
-.board-hidden {
-  border: 2px dashed #64748b;
-  border-radius: 10px;
-  padding: 1rem;
-  background: #e2e8f0;
-  color: #0f172a;
-  font-weight: 700;
-  width: min(360px, 100%);
+.board-shell {
+  width: min(320px, 100%);
 }
 
 .session-summary {
@@ -276,6 +263,10 @@ p {
   border-bottom: 1px solid var(--line);
   gap: 0.4rem;
   font-size: 0.93rem;
+}
+
+.row.row-5 {
+  grid-template-columns: 1.25fr 0.7fr 0.7fr 0.7fr 0.7fr;
 }
 
 .row.header {

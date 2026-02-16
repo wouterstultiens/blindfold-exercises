@@ -1,9 +1,7 @@
 export type ExerciseStage =
   | "square_color"
-  | "square_relation"
-  | "blindfold_sequence"
-  | "memory_puzzle"
-  | "calc_depth";
+  | "mate_in_1"
+  | "mate_in_2";
 
 export interface ExerciseItem<TPrompt = Record<string, unknown>, TSolution = string> {
   id: string;
@@ -41,6 +39,9 @@ export interface SessionRecord {
   duration_s: number;
   xp_earned: number;
   streak_after: number;
+  focus_stage: ExerciseStage;
+  status: "active" | "completed";
+  attempt_count: number;
   synced?: boolean;
 }
 

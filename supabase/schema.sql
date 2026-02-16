@@ -31,8 +31,27 @@ create table if not exists sessions (
   ended_at timestamptz not null,
   duration_s integer not null,
   xp_earned integer not null,
-  streak_after integer not null
+  streak_after integer not null,
+  focus_stage text not null default 'square_color',
+  status text not null default 'completed' check (status in ('active', 'completed')),
+  attempt_count integer not null default 0
 );
+
+alter table sessions add column if not exists focus_stage text not null default 'square_color';
+alter table sessions add column if not exists status text not null default 'completed';
+alter table sessions add column if not exists attempt_count integer not null default 0;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'sessions_status_check'
+  ) then
+    alter table sessions
+      add constraint sessions_status_check check (status in ('active', 'completed'));
+  end if;
+end $$;
 
 create table if not exists progress_snapshots (
   user_id uuid not null references profiles(user_id) on delete cascade,
@@ -49,28 +68,34 @@ alter table attempts enable row level security;
 alter table sessions enable row level security;
 alter table progress_snapshots enable row level security;
 
+drop policy if exists "profiles_select_own" on profiles;
 create policy "profiles_select_own" on profiles
   for select
   using (auth.uid() = user_id);
 
+drop policy if exists "profiles_update_own" on profiles;
 create policy "profiles_update_own" on profiles
   for update
   using (auth.uid() = user_id);
 
+drop policy if exists "profiles_insert_own" on profiles;
 create policy "profiles_insert_own" on profiles
   for insert
   with check (auth.uid() = user_id);
 
+drop policy if exists "attempts_rw_own" on attempts;
 create policy "attempts_rw_own" on attempts
   for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
+drop policy if exists "sessions_rw_own" on sessions;
 create policy "sessions_rw_own" on sessions
   for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
+drop policy if exists "snapshots_rw_own" on progress_snapshots;
 create policy "snapshots_rw_own" on progress_snapshots
   for all
   using (auth.uid() = user_id)

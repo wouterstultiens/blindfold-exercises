@@ -4,19 +4,20 @@
 
 - Runtime: Node.js 20+
 - Frontend: React 18, TypeScript 5, Vite 6
-- State: Zustand
 - Async/sync flow: TanStack Query
 - Chess logic: `chess.js`
-- Charts: Recharts
+- Board UI: `react-chessboard`
 - PWA: `vite-plugin-pwa`
 - Cloud sync/auth: Supabase + GitHub OAuth
+- Puzzle import: Lichess Puzzle API (`/api/puzzle/next`)
 
 ## Strict Constraints
 
-- Keep app friction low: default one-click session start.
+- Keep app friction low: single-category sessions, auto-save after each answer.
 - Mobile and desktop both supported (responsive + PWA installable).
 - Local-first behavior must work without Supabase config.
 - No secrets in repo docs or code.
+- Keep scope minimal: only `square_color`, `mate_in_1`, `mate_in_2`.
 
 ## Project Structure
 
@@ -41,10 +42,9 @@
 |   |   `-- session.ts
 |   |-- services/
 |   |   |-- localDb.ts
+|   |   |-- puzzleProvider.ts
 |   |   |-- supabase.ts
 |   |   `-- sync.ts
-|   |-- store/
-|   |   `-- useAppStore.ts
 |   `-- data/
 |       `-- puzzles.ts
 |-- supabase/
@@ -57,5 +57,8 @@
 - Prefer strict TypeScript types at module boundaries.
 - Keep exercise generation pure and testable.
 - Persist user/session state in `localStorage` first, then sync.
-- Keep all stage names in `ExerciseStage` union.
+- Keep all category names in `ExerciseStage` union:
+  - `square_color`
+  - `mate_in_1`
+  - `mate_in_2`
 - Tests live beside domain modules as `*.test.ts`.

@@ -46,7 +46,10 @@ describe("scoring", () => {
       ended_at: "2026-02-16T10:00:00.000Z",
       duration_s: 600,
       xp_earned: 0,
-      streak_after: 0
+      streak_after: 0,
+      focus_stage: "square_color",
+      status: "completed",
+      attempt_count: 1
     };
     const next = updateProfileAfterSession(profile, session, [baseAttempt], []);
     expect(next.xp).toBeGreaterThan(0);

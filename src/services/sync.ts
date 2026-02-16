@@ -30,7 +30,9 @@ export async function syncLocalProgress(payload: SyncPayload): Promise<{ synced:
   }
 
   if (unsyncedSessions.length > 0) {
-    const { error } = await client.from("sessions").insert(unsyncedSessions);
+    const { error } = await client.from("sessions").upsert(unsyncedSessions, {
+      onConflict: "id"
+    });
     if (error) {
       return { synced: false, message: `Failed to sync sessions: ${error.message}` };
     }
