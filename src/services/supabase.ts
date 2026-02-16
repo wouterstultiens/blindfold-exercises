@@ -21,8 +21,12 @@ export async function signInWithGitHub(): Promise<void> {
   if (!client) {
     throw new Error("Supabase environment variables are missing.");
   }
+  const redirectTo = new URL(import.meta.env.BASE_URL ?? "/", window.location.origin).toString();
   const { error } = await client.auth.signInWithOAuth({
-    provider: "github"
+    provider: "github",
+    options: {
+      redirectTo
+    }
   });
   if (error) {
     throw error;

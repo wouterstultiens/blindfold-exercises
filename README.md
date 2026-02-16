@@ -32,7 +32,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
 VITE_BASE_PATH=/
 ```
 
-For GitHub Pages deployment, set `VITE_BASE_PATH=/BlindfoldExercises/`.
+For GitHub Pages deployment, set `VITE_BASE_PATH=/blindfold-exercises/`.
 
 ## Tech Stack
 
