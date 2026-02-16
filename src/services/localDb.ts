@@ -144,3 +144,16 @@ export function clearLocalData(): void {
   localStorage.removeItem(SNAPSHOTS_KEY);
   localStorage.removeItem(REVIEW_KEY);
 }
+
+export function resetAllBlindfoldData(): void {
+  const keysToDelete: string[] = [];
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (key && key.startsWith("blindfold.")) {
+      keysToDelete.push(key);
+    }
+  }
+  for (const key of keysToDelete) {
+    localStorage.removeItem(key);
+  }
+}

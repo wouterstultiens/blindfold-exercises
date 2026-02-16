@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { chooseNextDifficulty, updateStageSnapshot } from "./engine/adaptive";
 import { createMateExercise, evaluateAnswer, generateExercise, stageDisplayName } from "./engine/exercises";
@@ -12,6 +12,7 @@ import {
   getProfile,
   getSessions,
   getSnapshots,
+  resetAllBlindfoldData,
   saveAttempts,
   saveProfile,
   saveSessions,
@@ -64,6 +65,10 @@ export default function App() {
   const [syncMessage, setSyncMessage] = useState<string>("Local mode active.");
   const [isLoadingItem, setIsLoadingItem] = useState<boolean>(false);
   const [isBootstrapped, setIsBootstrapped] = useState<boolean>(false);
+  const cleanupBootRef = useRef<{ userId: string | null; startedAtMs: number }>({
+    userId: null,
+    startedAtMs: Date.now()
+  });
 
   useEffect(() => {
     setAllAttempts(getAttempts());
@@ -173,7 +178,15 @@ export default function App() {
 
   useEffect(() => {
     if (!isBootstrapped) return;
-    const staleActive = sessions.filter((session) => session.status === "active");
+    if (cleanupBootRef.current.userId === userId) return;
+    cleanupBootRef.current.userId = userId;
+
+    const staleActive = getSessions().filter(
+      (session) =>
+        session.user_id === userId &&
+        session.status === "active" &&
+        Date.parse(session.started_at) < cleanupBootRef.current.startedAtMs
+    );
     if (staleActive.length === 0) return;
 
     let nextProfile = getProfile(userId, displayName);
@@ -210,7 +223,7 @@ export default function App() {
     setActiveSession(null);
     setCurrentItem(null);
     setFeedback("Previous unfinished session was closed and saved.");
-  }, [isBootstrapped, userId, displayName, sessions, allSessions, allAttempts, snapshots]);
+  }, [isBootstrapped, userId, displayName, allSessions, snapshots]);
 
   function persistSession(nextSession: SessionRecord): void {
     upsertSession(nextSession);
@@ -354,6 +367,23 @@ export default function App() {
     await loadNextItem(updatedSession.focus_stage);
   }
 
+  function resetProgress(): void {
+    const confirmReset = window.confirm("Reset all local progress, sessions, profile data, and cached puzzles?");
+    if (!confirmReset) return;
+
+    resetAllBlindfoldData();
+    const freshProfile = getProfile(userId, displayName);
+    setAllAttempts([]);
+    setAllSessions([]);
+    setAllSnapshots([]);
+    setProfile(freshProfile);
+    setActiveSession(null);
+    setCurrentItem(null);
+    setSummary(null);
+    setFeedback("All local progress has been reset.");
+    setSyncMessage("Local data reset.");
+  }
+
   if (!isBootstrapped) {
     return <div className="app-shell">Loading...</div>;
   }
@@ -418,6 +448,9 @@ export default function App() {
               disabled={syncMutation.isPending}
             >
               {syncMutation.isPending ? "Syncing..." : "Sync Now"}
+            </button>
+            <button type="button" className="btn danger" onClick={resetProgress}>
+              Reset All Data
             </button>
           </div>
           <p className="muted">{syncMessage}</p>

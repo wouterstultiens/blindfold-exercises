@@ -124,6 +124,12 @@ p {
   color: #0f172a;
 }
 
+.btn.danger {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
 .switch {
   display: flex;
   gap: 0.4rem;
