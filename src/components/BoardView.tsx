@@ -4,9 +4,10 @@ import { Chessboard } from "react-chessboard";
 interface BoardViewProps {
   fen: string;
   orientation?: "white" | "black";
+  variant?: "default" | "compact";
 }
 
-export function BoardView({ fen, orientation = "white" }: BoardViewProps) {
+export function BoardView({ fen, orientation = "white", variant = "default" }: BoardViewProps) {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const [boardWidth, setBoardWidth] = useState<number>(320);
 
@@ -17,7 +18,9 @@ export function BoardView({ fen, orientation = "white" }: BoardViewProps) {
 
     const node = shellRef.current;
     const resize = () => {
-      const width = Math.max(220, Math.min(420, Math.floor(node.clientWidth)));
+      const min = variant === "compact" ? 180 : 220;
+      const max = variant === "compact" ? 360 : 420;
+      const width = Math.max(min, Math.min(max, Math.floor(node.clientWidth)));
       setBoardWidth(width);
     };
 
@@ -28,10 +31,10 @@ export function BoardView({ fen, orientation = "white" }: BoardViewProps) {
     const observer = new ResizeObserver(resize);
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [variant]);
 
   return (
-    <div className="board-shell" ref={shellRef}>
+    <div className={`board-shell${variant === "compact" ? " compact" : ""}`} ref={shellRef}>
       <Chessboard
         id={`board-${fen}`}
         position={fen}

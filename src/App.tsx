@@ -832,7 +832,6 @@ export default function App() {
               </button>
             </div>
 
-            {feedback ? <p className="feedback">{feedback}</p> : null}
             {isLoadingItem || !currentItem ? (
               <p className="muted">Loading next exercise...</p>
             ) : (
@@ -840,6 +839,7 @@ export default function App() {
                 item={currentItem}
                 attemptsInSession={activeSession?.attempt_count ?? 0}
                 disabled={isLoadingItem || isDeleting}
+                focused
                 onSquareSubmit={(answer, latencyMs, evaluation) => {
                   void handleSquareSubmit(answer, latencyMs, evaluation);
                 }}

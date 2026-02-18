@@ -7,6 +7,7 @@ interface ExerciseCardProps {
   item: ExerciseItem;
   attemptsInSession: number;
   disabled?: boolean;
+  focused?: boolean;
   onSquareSubmit: (answer: "black" | "white", latencyMs: number, evaluation: { correct: boolean; expected: string }) => void;
   onPuzzleSubmit: (correct: boolean, latencyMs: number) => void;
 }
@@ -26,7 +27,14 @@ function PieceLines({ item }: { item: PuzzleRecallItem }) {
   );
 }
 
-export function ExerciseCard({ item, attemptsInSession, disabled = false, onSquareSubmit, onPuzzleSubmit }: ExerciseCardProps) {
+export function ExerciseCard({
+  item,
+  attemptsInSession,
+  disabled = false,
+  focused = false,
+  onSquareSubmit,
+  onPuzzleSubmit
+}: ExerciseCardProps) {
   const startedAtRef = useRef<number>(Date.now());
   const [revealed, setRevealed] = useState<boolean>(false);
 
@@ -38,7 +46,7 @@ export function ExerciseCard({ item, attemptsInSession, disabled = false, onSqua
   if (item.mode === "square_color") {
     const squareItem = item as SquareColorItem;
     return (
-      <section className="exercise-card">
+      <section className={`exercise-card${focused ? " focused" : ""}`}>
         <div className="exercise-header">
           <p className="kicker">{modeDisplayName(item.mode)}</p>
           <p className="muted">Attempts in session: {attemptsInSession}</p>
@@ -64,40 +72,48 @@ export function ExerciseCard({ item, attemptsInSession, disabled = false, onSqua
   }
 
   const puzzleItem = item as PuzzleRecallItem;
+  const compactReveal = focused && revealed;
   return (
-    <section className="exercise-card">
-      <div className="exercise-header">
-        <p className="kicker">{modeDisplayName(item.mode)}</p>
-        <p className="muted">Attempts in session: {attemptsInSession}</p>
-      </div>
+    <section className={`exercise-card${focused ? " focused" : ""}`}>
+      {!compactReveal ? (
+        <>
+          <div className="exercise-header">
+            <p className="kicker">{modeDisplayName(item.mode)}</p>
+            <p className="muted">Attempts in session: {attemptsInSession}</p>
+          </div>
 
-      <p className="prompt">{puzzleSideLabel(puzzleItem.sideToMove)}</p>
-      <p className="muted">
-        {puzzleItem.pieceCount} pieces | bucket {puzzleItem.ratingBucket}
-      </p>
-      <PieceLines item={puzzleItem} />
-
+          <p className="prompt">{puzzleSideLabel(puzzleItem.sideToMove)}</p>
+          <p className="muted">
+            {puzzleItem.pieceCount} pieces | bucket {puzzleItem.ratingBucket}
+          </p>
+          <PieceLines item={puzzleItem} />
+        </>
+      ) : null}
       {!revealed ? (
-        <button className="btn primary" type="button" disabled={disabled} onClick={() => setRevealed(true)}>
+        <button className={`btn primary${focused ? " focus-cta" : ""}`} type="button" disabled={disabled} onClick={() => setRevealed(true)}>
           View Answer
         </button>
       ) : (
         <>
-          <article className="answer-box">
-            <h3>Continuation</h3>
+          <article className={`answer-box${compactReveal ? " compact" : ""}`}>
+            <h3>{compactReveal ? "Line" : "Continuation"}</h3>
             <p>{puzzleItem.continuationText}</p>
           </article>
-          <div className="board-wrap">
-            <BoardView fen={puzzleItem.fen} orientation={puzzleItem.sideToMove === "b" ? "black" : "white"} />
+          <div className={`board-wrap${compactReveal ? " compact" : ""}`}>
+            <BoardView
+              fen={puzzleItem.fen}
+              orientation={puzzleItem.sideToMove === "b" ? "black" : "white"}
+              variant={compactReveal ? "compact" : "default"}
+            />
           </div>
-          <div className="choices">
+          <div className={`choices${compactReveal ? " focus-actions" : ""}`}>
             <button
               className="choice-btn good"
               type="button"
               disabled={disabled}
               onClick={() => onPuzzleSubmit(true, Date.now() - startedAtRef.current)}
             >
-              I got it right
+              {compactReveal ? "Right" : "I got it right"}
             </button>
             <button
               className="choice-btn bad"
@@ -105,7 +121,7 @@ export function ExerciseCard({ item, attemptsInSession, disabled = false, onSqua
               disabled={disabled}
               onClick={() => onPuzzleSubmit(false, Date.now() - startedAtRef.current)}
             >
-              I got it wrong
+              {compactReveal ? "Wrong" : "I got it wrong"}
             </button>
           </div>
         </>

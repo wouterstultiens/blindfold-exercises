@@ -1,4 +1,8 @@
 ## [2026-02-18]
+- Done: Reworked focused mode for mobile real estate: overlay is now scrollable with safe-area padding (`dvh` + `env()`), compact board sizing, and sticky/reachable grading controls.
+- Done: Added focused-card variant with larger touch targets (44px+ baseline, 56px in focused mode) and compact reveal state showing only small continuation text + board + right/wrong actions.
+- Done: Added compact `BoardView` variant to cap board size in focused answer view for shorter screens.
+- Done: Built and tested after UI changes (`npm run build`, `npm test -- --run`).
 - Done: Added signed-in "Delete Data Everywhere" flow that deletes remote Supabase `attempts/sessions` before local reset, preventing sync repopulation after reset.
 - Done: Added `Training` / `Progress` tabs and a new `ProgressView` with session trend graphs (accuracy and average response time) plus existing summary tables.
 - Done: Added focused exercise mode overlay with fullscreen request on start and automatic return to main app on stop/end.
@@ -14,7 +18,7 @@
 - Done: Rebuilt dense static shards after the alignment fix (`3541` puzzles, 38 combo shards).
 - Done: Redesigned UI to a dark, smoother, lower-distraction layout.
 - Done: Removed obsolete Syzygy scripts/assets and Supabase `puzzle_bank` / edge puzzle-fetch path.
-- Next: Browser smoke test signed-in delete-everywhere flow, focus-mode enter/exit behavior, and progress chart updates across at least 3 completed sessions.
+- Next: Mobile browser smoke test on at least 2 viewport sizes (small Android + iPhone) for focused-mode scroll reachability, board visibility, and right/wrong button ergonomics.
 
 ## [2026-02-17]
 - Done: Reduced app scope to two drills (`square_color`, `puzzle_recall`) and kept local-first + Supabase sync flow.
