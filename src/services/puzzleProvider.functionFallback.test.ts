@@ -3,10 +3,36 @@ import { __resetPuzzleDbCacheForTests, getNextPuzzle } from "./puzzleProvider";
 
 const SETTINGS = { maxPieces: 12, targetRating: 1500 };
 
+function createMockLocalStorage(): Storage {
+  const store = new Map<string, string>();
+  return {
+    get length() {
+      return store.size;
+    },
+    clear() {
+      store.clear();
+    },
+    getItem(key: string) {
+      return store.has(key) ? store.get(key)! : null;
+    },
+    key(index: number) {
+      return Array.from(store.keys())[index] ?? null;
+    },
+    removeItem(key: string) {
+      store.delete(key);
+    },
+    setItem(key: string, value: string) {
+      store.set(key, String(value));
+    }
+  } as Storage;
+}
+
 describe("puzzle provider static-db errors", () => {
   beforeEach(() => {
-    localStorage.clear();
     vi.restoreAllMocks();
+    const storage = createMockLocalStorage();
+    vi.stubGlobal("localStorage", storage);
+    storage.clear();
     __resetPuzzleDbCacheForTests();
   });
 

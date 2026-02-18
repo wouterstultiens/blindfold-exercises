@@ -320,6 +320,51 @@ function continuationTextFromSan(fen, sanLine) {
   return tokens.join(" ");
 }
 
+function normalizeSolverPerspective(seed) {
+  if (!Array.isArray(seed.continuationSan) || seed.continuationSan.length === 0) {
+    return null;
+  }
+
+  const [firstMoveSan, ...solverSans] = seed.continuationSan;
+  if (solverSans.length === 0) {
+    return null;
+  }
+
+  const position = new Chess(seed.fen);
+  const firstMove = position.move(firstMoveSan);
+  if (!firstMove) {
+    return null;
+  }
+
+  const solverFen = position.fen();
+  const solverPieces = extractPieces(solverFen);
+
+  const solverReplay = new Chess(solverFen);
+  const normalizedSan = [];
+  for (const san of solverSans) {
+    const move = solverReplay.move(san);
+    if (!move) {
+      return null;
+    }
+    normalizedSan.push(move.san);
+  }
+
+  if (normalizedSan.length === 0) {
+    return null;
+  }
+
+  return {
+    ...seed,
+    fen: solverFen,
+    sideToMove: solverPieces.sideToMove,
+    pieceCount: solverPieces.pieceCount,
+    whitePieces: solverPieces.whitePieces,
+    blackPieces: solverPieces.blackPieces,
+    continuationSan: normalizedSan,
+    continuationText: continuationTextFromSan(solverFen, normalizedSan)
+  };
+}
+
 function pieceSortIndex(token) {
   const order = "KQRBNP";
   const piece = token.charAt(0);
@@ -511,7 +556,7 @@ async function tryBuildTablebaseSeed(fen, pieces, maxPlies, cache) {
   if (sanLine.length === 0) return null;
   if (!hasVisualizationCue(sanLine) && sanLine.length > 2) return null;
 
-  return {
+  const seed = {
     puzzleId: tablebasePuzzleId(fen),
     fen,
     sideToMove: pieces.sideToMove,
@@ -524,6 +569,8 @@ async function tryBuildTablebaseSeed(fen, pieces, maxPlies, cache) {
     themes: ["tablebase", "endgame", "short"],
     source: "tablebase_api"
   };
+
+  return normalizeSolverPerspective(seed);
 }
 
 function initialState(config) {
@@ -902,7 +949,7 @@ async function main() {
                 if (continuationSan.length === 0) {
                   runStats.skippedInvalid += 1;
                 } else {
-                  bucketItems.push({
+                  const normalized = normalizeSolverPerspective({
                     puzzleId: puzzleIdValue,
                     fen: fenValue,
                     sideToMove: pieces.sideToMove,
@@ -915,9 +962,14 @@ async function main() {
                     themes,
                     source: "local_db"
                   });
-                  bucketMap.set(bucket, bucketItems);
-                  seenPuzzleIds.add(puzzleIdValue);
-                  runStats.kept += 1;
+                  if (!normalized) {
+                    runStats.skippedInvalid += 1;
+                  } else {
+                    bucketItems.push(normalized);
+                    bucketMap.set(bucket, bucketItems);
+                    seenPuzzleIds.add(puzzleIdValue);
+                    runStats.kept += 1;
+                  }
                 }
               }
             }
