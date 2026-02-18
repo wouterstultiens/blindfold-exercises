@@ -14,6 +14,13 @@ function settingsLabel(session: SessionRecord): string {
   return `${session.settings_payload.pieceCount} pieces @ ${session.settings_payload.ratingBucket}`;
 }
 
+function sessionDateLabel(isoDate: string): string {
+  const date = new Date(isoDate);
+  const datePart = date.toLocaleDateString();
+  const timePart = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return `${datePart} ${timePart}`;
+}
+
 export function Dashboard({ attempts, sessions }: DashboardProps) {
   const modeStats = summarizeModeStats(attempts);
   const sessionRows = summarizeSessions(sessions, attempts);
@@ -95,7 +102,7 @@ export function Dashboard({ attempts, sessions }: DashboardProps) {
             ) : (
               sessionRows.map(({ session, accuracy }) => (
                 <div className="row row-5" key={session.id}>
-                  <span>{new Date(session.ended_at).toLocaleString()}</span>
+                  <span>{sessionDateLabel(session.ended_at)}</span>
                   <span>{modeDisplayName(session.mode)}</span>
                   <span>{settingsLabel(session)}</span>
                   <span>{session.attempt_count}</span>
