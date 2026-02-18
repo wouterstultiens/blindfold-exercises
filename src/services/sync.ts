@@ -44,17 +44,16 @@ export interface SyncResult {
   sessions: SessionRecord[];
 }
 
-function parseSettings(payload: Record<string, unknown>): { maxPieces: number; targetRating: number } | null {
+function parseSettings(payload: Record<string, unknown>): { maxPieces: number } | null {
   const raw = payload.settings;
   if (!raw || typeof raw !== "object") {
     return null;
   }
   const maxPieces = Number((raw as { maxPieces?: unknown }).maxPieces);
-  const targetRating = Number((raw as { targetRating?: unknown }).targetRating);
-  if (!Number.isFinite(maxPieces) || !Number.isFinite(targetRating)) {
+  if (!Number.isFinite(maxPieces)) {
     return null;
   }
-  return { maxPieces, targetRating };
+  return { maxPieces };
 }
 
 function toDbAttempt(attempt: AttemptRecord): AttemptDbRow {

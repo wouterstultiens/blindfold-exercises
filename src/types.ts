@@ -2,10 +2,9 @@ export type ExerciseMode = "square_color" | "puzzle_recall";
 
 export interface PuzzleSettings {
   maxPieces: number;
-  targetRating: number;
 }
 
-export type PuzzleSource = "local_db" | "tablebase_api";
+export type PuzzleSource = "tablebase_syzygy";
 
 export interface SquareColorItem {
   id: string;

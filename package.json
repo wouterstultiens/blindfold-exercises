@@ -9,8 +9,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "puzzles:build": "node scripts/build-puzzle-db.mjs",
-    "puzzles:build:blindfold": "node scripts/build-puzzle-db.mjs --reset --max-pieces 7 --max-plies 4 --sources lichess,tablebase --tablebase-budget 250"
+    "puzzles:download": "python3 scripts/download_syzygy.py",
+    "puzzles:build": "python3 scripts/build_tablebase_puzzles.py",
+    "puzzles:build:subset": "python3 scripts/build_tablebase_puzzles.py --subset-count 50 --target-count 100"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.2",

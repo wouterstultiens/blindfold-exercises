@@ -6,7 +6,30 @@
   <component name="ChangeListManager">
     <list default="true" id="cee287c5-f381-4037-8505-a57fadbaf68d" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/build-puzzle-db.mjs" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/build-puzzle-db.mjs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/build-state.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/manifest.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r1000.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r1100.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r1200.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r1300.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r1400.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r1500.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r1600.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r1700.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r1800.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r1900.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r2000.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r2100.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r2200.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r2300.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r2400.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r2500.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r2600.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r2700.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r600.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r700.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r800.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/puzzles/r900.json" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -41,24 +64,25 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
-    &quot;ai.playground.ignore.import.keys.banner.in.settings&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/woute/OneDrive/Online Documenten/Python Projects/BlindfoldExercises&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;npm.puzzles:build -- --max-pieces 6.executor&quot;: &quot;Run&quot;,
-    &quot;ts.external.directory.path&quot;: &quot;C:\\Users\\woute\\OneDrive\\Online Documenten\\Python Projects\\BlindfoldExercises\\node_modules\\typescript\\lib&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "ai.playground.ignore.import.keys.banner.in.settings": "true",
+    "git-widget-placeholder": "main",
+    "last_opened_file_path": "/Users/wouterstultiens/PycharmProjects/blindfold-exercises",
+    "nodejs_package_manager_path": "npm",
+    "npm.puzzles:build -- --max-pieces 6.executor": "Run",
+    "ts.external.directory.path": "C:\\Users\\woute\\OneDrive\\Online Documenten\\Python Projects\\BlindfoldExercises\\node_modules\\typescript\\lib",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
       <recent name="C:\Users\woute\OneDrive\Online Documenten\Python Projects\BlindfoldExercises" />
     </key>
   </component>

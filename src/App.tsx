@@ -18,8 +18,7 @@ import type { AttemptRecord, ExerciseItem, ExerciseMode, PuzzleSettings, Session
 
 const GUEST_ID = "guest-local";
 const DEFAULT_PUZZLE_SETTINGS: PuzzleSettings = {
-  maxPieces: 7,
-  targetRating: 1500
+  maxPieces: 5
 };
 
 function createId(prefix: string): string {
@@ -43,7 +42,7 @@ function sameSettings(a: PuzzleSettings | null, b: PuzzleSettings | null): boole
   if (!a || !b) {
     return false;
   }
-  return a.maxPieces === b.maxPieces && a.targetRating === b.targetRating;
+  return a.maxPieces === b.maxPieces;
 }
 
 function sessionContextMatches(session: SessionRecord, mode: ExerciseMode, settings: PuzzleSettings | null): boolean {
@@ -470,20 +469,7 @@ export default function App() {
   function handleMaxPiecesChange(value: number): void {
     const next = {
       ...puzzleSettings,
-      maxPieces: Math.min(7, Math.max(2, value))
-    };
-    setPuzzleSettings(next);
-    if (selectedMode === "puzzle_recall") {
-      rotateSessionForContext("puzzle_recall", next);
-      stopExerciseRun();
-    }
-  }
-
-  function handleTargetRatingChange(value: number): void {
-    const rounded = Math.round(value / 50) * 50;
-    const next = {
-      ...puzzleSettings,
-      targetRating: Math.min(2800, Math.max(600, rounded))
+      maxPieces: Math.min(5, Math.max(3, value))
     };
     setPuzzleSettings(next);
     if (selectedMode === "puzzle_recall") {
@@ -562,17 +548,6 @@ export default function App() {
                     onChange={(event) => handleMaxPiecesChange(Number(event.target.value))}
                   />
                 </label>
-                <label className="field">
-                  <span>Target Rating</span>
-                  <input
-                    type="number"
-                    min={600}
-                    max={2800}
-                    step={50}
-                    value={puzzleSettings.targetRating}
-                    onChange={(event) => handleTargetRatingChange(Number(event.target.value))}
-                  />
-                </label>
               </>
             ) : null}
 
@@ -608,9 +583,7 @@ export default function App() {
           {activeSession ? (
             <p className="muted">
               Active session: {modeDisplayName(activeSession.mode)}
-              {activeSession.settings_payload
-                ? ` | ${activeSession.settings_payload.maxPieces} pieces @ ${activeSession.settings_payload.targetRating}`
-                : ""}
+              {activeSession.settings_payload ? ` | ${activeSession.settings_payload.maxPieces} pieces` : ""}
             </p>
           ) : (
             <p className="muted">No active session right now.</p>

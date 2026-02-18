@@ -5,7 +5,6 @@ export interface PuzzleRecallSeed {
   puzzleId: string;
   fen: string;
   sideToMove: "w" | "b";
-  rating: number;
   pieceCount: number;
   whitePieces: string[];
   blackPieces: string[];
@@ -18,18 +17,18 @@ export interface PuzzleRecallSeed {
 interface PuzzleManifest {
   version: number;
   generatedAt: string;
-  files: Array<{
-    bucket: number;
-    file: string;
-    count: number;
-  }>;
+  source: string;
+  maxPieces: number;
+  maxContinuationPlies: number;
+  sourcesUsed: string[];
+  count: number;
+  puzzlesFile: string;
 }
 
 interface RawPuzzleSeed {
   puzzleId: unknown;
   fen: unknown;
   sideToMove: unknown;
-  rating: unknown;
   pieceCount: unknown;
   whitePieces: unknown;
   blackPieces: unknown;
@@ -39,55 +38,14 @@ interface RawPuzzleSeed {
   source?: unknown;
 }
 
-const RECENT_PUZZLES_KEY = "blindfold.puzzle-recent.v1";
+const RECENT_PUZZLES_KEY = "blindfold.puzzle-recent.v2";
 const RECENT_IDS_SIZE = 40;
-const RATING_BUCKET_SIZE = 100;
 const MANIFEST_FILE = "manifest.json";
 const MISSING_DB_HINT = "Puzzle DB not found. Run `npm run puzzles:build` to generate `public/puzzles/*`.";
 const MAX_CLEAR_CONTINUATION_PLIES = 4;
-const LOW_PIECE_ENDGAME_THRESHOLD = 10;
-const ENDGAME_THEMES = new Set([
-  "endgame",
-  "pawnEndgame",
-  "rookEndgame",
-  "bishopEndgame",
-  "knightEndgame",
-  "queenEndgame",
-  "queenRookEndgame"
-]);
-const EXCLUDED_THEMES = new Set([
-  ...ENDGAME_THEMES,
-  "veryLong"
-]);
-const TACTICAL_THEMES = new Set([
-  "oneMove",
-  "short",
-  "fork",
-  "pin",
-  "skewer",
-  "discoveredAttack",
-  "doubleCheck",
-  "hangingPiece",
-  "trappedPiece",
-  "sacrifice",
-  "deflection",
-  "attraction",
-  "interference",
-  "clearance",
-  "capturingDefender",
-  "xRayAttack",
-  "backRankMate",
-  "smotheredMate",
-  "arabianMate",
-  "anastasiaMate",
-  "bodenMate",
-  "dovetailMate",
-  "hookMate",
-  "doubleBishopMate"
-]);
 
 let manifestPromise: Promise<PuzzleManifest> | null = null;
-const shardCache = new Map<number, Promise<PuzzleRecallSeed[]>>();
+let puzzlesPromise: Promise<PuzzleRecallSeed[]> | null = null;
 
 function baseAssetPath(): string {
   const base = import.meta.env.BASE_URL ?? "/";
@@ -105,13 +63,12 @@ function isStringArray(value: unknown): value is string[] {
 function parseSeed(raw: RawPuzzleSeed): PuzzleRecallSeed | null {
   const themes = raw.themes;
   const parsedThemes = isStringArray(themes) ? themes : undefined;
-  const source = raw.source === "tablebase_api" ? "tablebase_api" : "local_db";
+  const source: PuzzleSource = raw.source === "tablebase_syzygy" ? "tablebase_syzygy" : "tablebase_syzygy";
 
   if (
     typeof raw.puzzleId !== "string" ||
     typeof raw.fen !== "string" ||
     (raw.sideToMove !== "w" && raw.sideToMove !== "b") ||
-    typeof raw.rating !== "number" ||
     typeof raw.pieceCount !== "number" ||
     !isStringArray(raw.whitePieces) ||
     !isStringArray(raw.blackPieces) ||
@@ -126,7 +83,6 @@ function parseSeed(raw: RawPuzzleSeed): PuzzleRecallSeed | null {
     puzzleId: raw.puzzleId,
     fen: raw.fen,
     sideToMove: raw.sideToMove,
-    rating: raw.rating,
     pieceCount: raw.pieceCount,
     whitePieces: raw.whitePieces,
     blackPieces: raw.blackPieces,
@@ -137,55 +93,12 @@ function parseSeed(raw: RawPuzzleSeed): PuzzleRecallSeed | null {
   };
 }
 
-function hasClearTacticalTheme(themes: string[], pieceCount: number): boolean {
-  if (themes.length === 0) {
-    return false;
-  }
-
-  if (themes.includes("veryLong")) {
-    return false;
-  }
-
-  const hasEndgameTheme = themes.some((theme) => ENDGAME_THEMES.has(theme));
-  const hasTacticalOrMateTheme = themes.some((theme) => theme.startsWith("mate") || TACTICAL_THEMES.has(theme));
-
-  if (hasEndgameTheme) {
-    return pieceCount <= LOW_PIECE_ENDGAME_THRESHOLD || hasTacticalOrMateTheme;
-  }
-
-  if (themes.some((theme) => EXCLUDED_THEMES.has(theme))) {
-    return false;
-  }
-
-  return hasTacticalOrMateTheme;
-}
-
-function hasFallbackMateSignal(continuationSan: string[]): boolean {
-  return continuationSan.some((san) => /#/.test(san));
-}
-
 function isClearShortPuzzle(seed: PuzzleRecallSeed): boolean {
-  if (seed.continuationSan.length > MAX_CLEAR_CONTINUATION_PLIES) {
-    return false;
-  }
-
-  if (seed.source === "tablebase_api") {
-    return true;
-  }
-
-  if (seed.themes && seed.themes.length > 0) {
-    return hasClearTacticalTheme(seed.themes, seed.pieceCount);
-  }
-
-  return hasFallbackMateSignal(seed.continuationSan);
+  return seed.continuationSan.length <= MAX_CLEAR_CONTINUATION_PLIES;
 }
 
 function matchesSettings(seed: PuzzleRecallSeed, settings: PuzzleSettings): boolean {
-  return (
-    seed.pieceCount <= settings.maxPieces &&
-    Math.abs(seed.rating - settings.targetRating) <= 100 &&
-    isClearShortPuzzle(seed)
-  );
+  return seed.pieceCount <= settings.maxPieces && isClearShortPuzzle(seed);
 }
 
 function readRecentPuzzleIds(): string[] {
@@ -226,42 +139,42 @@ function parseManifest(raw: unknown): PuzzleManifest {
     throw new Error(`Invalid puzzle manifest. ${MISSING_DB_HINT}`);
   }
 
-  const candidate = raw as {
-    version?: unknown;
-    generatedAt?: unknown;
-    files?: unknown;
-  };
+  const candidate = raw as Record<string, unknown>;
+  const version = candidate.version;
+  const generatedAt = candidate.generatedAt;
+  const source = candidate.source;
+  const maxPieces = candidate.maxPieces;
+  const maxContinuationPlies = candidate.maxContinuationPlies;
+  const sourcesUsed = candidate.sourcesUsed;
+  const count = candidate.count;
+  const puzzlesFile = candidate.puzzlesFile;
 
-  if (typeof candidate.version !== "number" || typeof candidate.generatedAt !== "string" || !Array.isArray(candidate.files)) {
+  if (
+    typeof version !== "number" ||
+    typeof generatedAt !== "string" ||
+    typeof source !== "string" ||
+    typeof maxPieces !== "number" ||
+    typeof maxContinuationPlies !== "number" ||
+    !Array.isArray(sourcesUsed) ||
+    typeof count !== "number" ||
+    typeof puzzlesFile !== "string"
+  ) {
     throw new Error(`Invalid puzzle manifest shape. ${MISSING_DB_HINT}`);
   }
 
-  const files = candidate.files
-    .map((entry) => {
-      const fileEntry = entry as { bucket?: unknown; file?: unknown; count?: unknown };
-      if (
-        typeof fileEntry?.bucket !== "number" ||
-        typeof fileEntry?.file !== "string" ||
-        typeof fileEntry?.count !== "number"
-      ) {
-        return null;
-      }
-      return {
-        bucket: fileEntry.bucket,
-        file: fileEntry.file,
-        count: fileEntry.count
-      };
-    })
-    .filter((entry): entry is { bucket: number; file: string; count: number } => entry !== null);
-
-  if (files.length === 0) {
-    throw new Error(`Puzzle manifest has no shard files. ${MISSING_DB_HINT}`);
+  if (!sourcesUsed.every((entry) => typeof entry === "string")) {
+    throw new Error(`Invalid puzzle manifest sources. ${MISSING_DB_HINT}`);
   }
 
   return {
-    version: candidate.version,
-    generatedAt: candidate.generatedAt,
-    files
+    version,
+    generatedAt,
+    source,
+    maxPieces,
+    maxContinuationPlies,
+    sourcesUsed: sourcesUsed as string[],
+    count,
+    puzzlesFile
   };
 }
 
@@ -277,46 +190,23 @@ async function loadManifest(): Promise<PuzzleManifest> {
   return manifestPromise;
 }
 
-async function loadShard(bucket: number): Promise<PuzzleRecallSeed[]> {
-  const cached = shardCache.get(bucket);
-  if (cached) {
-    return cached;
+async function loadPuzzles(manifest: PuzzleManifest): Promise<PuzzleRecallSeed[]> {
+  if (!puzzlesPromise) {
+    puzzlesPromise = fetchJson(puzzleAssetUrl(manifest.puzzlesFile))
+      .then((raw) => {
+        if (!Array.isArray(raw)) {
+          throw new Error(`Invalid puzzle shard format: ${manifest.puzzlesFile}`);
+        }
+        return raw
+          .map((item) => parseSeed(item as RawPuzzleSeed))
+          .filter((item): item is PuzzleRecallSeed => item !== null);
+      })
+      .catch((error) => {
+        puzzlesPromise = null;
+        throw error;
+      });
   }
-
-  const promise = (async () => {
-    const manifest = await loadManifest();
-    const fileEntry = manifest.files.find((file) => file.bucket === bucket);
-    if (!fileEntry) {
-      return [];
-    }
-
-    const raw = await fetchJson(puzzleAssetUrl(fileEntry.file));
-    if (!Array.isArray(raw)) {
-      throw new Error(`Invalid puzzle shard format: ${fileEntry.file}`);
-    }
-
-    return raw
-      .map((item) => parseSeed(item as RawPuzzleSeed))
-      .filter((item): item is PuzzleRecallSeed => item !== null);
-  })();
-
-  shardCache.set(
-    bucket,
-    promise.catch((error) => {
-      shardCache.delete(bucket);
-      throw error;
-    })
-  );
-  return shardCache.get(bucket) as Promise<PuzzleRecallSeed[]>;
-}
-
-function bucketsForSettings(manifest: PuzzleManifest, settings: PuzzleSettings): number[] {
-  const minBucket = Math.floor((settings.targetRating - 100) / RATING_BUCKET_SIZE) * RATING_BUCKET_SIZE;
-  const maxBucket = Math.floor((settings.targetRating + 100) / RATING_BUCKET_SIZE) * RATING_BUCKET_SIZE;
-
-  return manifest.files
-    .map((file) => file.bucket)
-    .filter((bucket) => bucket >= minBucket && bucket <= maxBucket);
+  return puzzlesPromise;
 }
 
 function dedupeSeeds(items: PuzzleRecallSeed[]): PuzzleRecallSeed[] {
@@ -325,35 +215,24 @@ function dedupeSeeds(items: PuzzleRecallSeed[]): PuzzleRecallSeed[] {
 
 export async function getNextPuzzle(settings: PuzzleSettings): Promise<PuzzleRecallSeed> {
   const manifest = await loadManifest();
-  const buckets = bucketsForSettings(manifest, settings);
-
-  if (buckets.length === 0) {
-    throw new Error("No puzzle shard found for this rating range. Regenerate puzzle DB.");
+  if (manifest.version !== 5) {
+    throw new Error(`Unsupported puzzle manifest version ${manifest.version}. Regenerate puzzle DB.`);
   }
 
-  const shardItems = await Promise.all(buckets.map((bucket) => loadShard(bucket)));
-  const matches = dedupeSeeds(shardItems.flat()).filter((seed) => matchesSettings(seed, settings));
-
-  if (matches.length === 0 && settings.maxPieces <= 7) {
-    const allBuckets = manifest.files.map((file) => file.bucket);
-    const allShardItems = await Promise.all(allBuckets.map((bucket) => loadShard(bucket)));
-    const tablebaseFallback = dedupeSeeds(allShardItems.flat()).filter(
-      (seed) => seed.source === "tablebase_api" && seed.pieceCount <= settings.maxPieces && isClearShortPuzzle(seed)
-    );
-    if (tablebaseFallback.length > 0) {
-      const fallbackChoice = pickRandom(tablebaseFallback);
-      markRecentPuzzleId(fallbackChoice.puzzleId);
-      return fallbackChoice;
-    }
+  const puzzles = await loadPuzzles(manifest);
+  if (puzzles.length === 0) {
+    throw new Error("Puzzle DB is empty. Regenerate puzzle DB.");
   }
 
-  if (matches.length === 0) {
-    throw new Error("No puzzle matched this max pieces and rating range. Try another setting.");
+  const matches = dedupeSeeds(puzzles).filter((seed) => matchesSettings(seed, settings));
+  const pool = matches.length > 0 ? matches : puzzles.filter((seed) => seed.pieceCount <= settings.maxPieces);
+  if (pool.length === 0) {
+    throw new Error("No puzzle matched this max piece setting. Regenerate puzzle DB with broader criteria.");
   }
 
   const recentIds = new Set(readRecentPuzzleIds());
-  const fresh = matches.filter((seed) => !recentIds.has(seed.puzzleId));
-  const selected = pickRandom(fresh.length > 0 ? fresh : matches);
+  const fresh = pool.filter((seed) => !recentIds.has(seed.puzzleId));
+  const selected = pickRandom(fresh.length > 0 ? fresh : pool);
   markRecentPuzzleId(selected.puzzleId);
   return selected;
 }
@@ -364,5 +243,5 @@ export function toPieceLines(seed: Pick<PuzzleRecallSeed, "whitePieces" | "black
 
 export function __resetPuzzleDbCacheForTests(): void {
   manifestPromise = null;
-  shardCache.clear();
+  puzzlesPromise = null;
 }
