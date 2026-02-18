@@ -5,11 +5,18 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:host": "vite --host 127.0.0.1 --port 5173 --strictPort",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "build": "npm run typecheck && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "mcp:playwright": "npx @playwright/mcp@latest --isolated --save-trace --output-dir .artifacts/playwright-mcp --browser chromium --host 127.0.0.1 --port 3000",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
+    "e2e:smoke": "playwright test e2e/smoke",
+    "e2e:design": "playwright test e2e/design",
+    "audit:design": "npm run test && npm run build && npm run e2e:smoke && npm run e2e:design",
     "puzzles:download": "python scripts/download_lichess_db.py",
     "puzzles:build": "python scripts/build_lichess_puzzles.py",
     "puzzles:build:subset": "python scripts/build_lichess_puzzles.py --target-per-combo 6 --max-rating 1400 --max-rows 80000 --seed 7",
@@ -23,6 +30,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",

@@ -46,7 +46,7 @@ export function ExerciseCard({
   if (item.mode === "square_color") {
     const squareItem = item as SquareColorItem;
     return (
-      <section className={`exercise-card${focused ? " focused" : ""}`}>
+      <section className={`exercise-card${focused ? " focused" : ""}`} data-testid="exercise-card-square-color">
         <div className="exercise-header">
           <p className="kicker">{modeDisplayName(item.mode)}</p>
           <p className="muted">Attempts in session: {attemptsInSession}</p>
@@ -58,6 +58,7 @@ export function ExerciseCard({
               key={choice}
               className="choice-btn"
               type="button"
+              data-testid={`square-answer-${choice}`}
               disabled={disabled}
               onClick={() =>
                 onSquareSubmit(choice, Date.now() - startedAtRef.current, evaluateSquareColorAnswer(squareItem, choice))
@@ -74,7 +75,7 @@ export function ExerciseCard({
   const puzzleItem = item as PuzzleRecallItem;
   const compactReveal = focused && revealed;
   return (
-    <section className={`exercise-card${focused ? " focused" : ""}`}>
+    <section className={`exercise-card${focused ? " focused" : ""}`} data-testid="exercise-card-puzzle-recall">
       {!compactReveal ? (
         <>
           <div className="exercise-header">
@@ -90,12 +91,18 @@ export function ExerciseCard({
         </>
       ) : null}
       {!revealed ? (
-        <button className={`btn primary${focused ? " focus-cta" : ""}`} type="button" disabled={disabled} onClick={() => setRevealed(true)}>
+        <button
+          className={`btn primary${focused ? " focus-cta" : ""}`}
+          type="button"
+          data-testid="view-answer-btn"
+          disabled={disabled}
+          onClick={() => setRevealed(true)}
+        >
           View Answer
         </button>
       ) : (
         <>
-          <article className={`answer-box${compactReveal ? " compact" : ""}`}>
+          <article className={`answer-box${compactReveal ? " compact" : ""}`} data-testid="puzzle-continuation">
             <h3>{compactReveal ? "Line" : "Continuation"}</h3>
             <p>{puzzleItem.continuationText}</p>
           </article>
@@ -110,6 +117,7 @@ export function ExerciseCard({
             <button
               className="choice-btn good"
               type="button"
+              data-testid="grade-right-btn"
               disabled={disabled}
               onClick={() => onPuzzleSubmit(true, Date.now() - startedAtRef.current)}
             >
@@ -118,6 +126,7 @@ export function ExerciseCard({
             <button
               className="choice-btn bad"
               type="button"
+              data-testid="grade-wrong-btn"
               disabled={disabled}
               onClick={() => onPuzzleSubmit(false, Date.now() - startedAtRef.current)}
             >

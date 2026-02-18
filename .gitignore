@@ -9,3 +9,6 @@ vite.config.js
 vite.config.d.ts
 .idea/
 lichess_db_puzzle.csv.zst
+.artifacts/
+playwright-report/
+test-results/

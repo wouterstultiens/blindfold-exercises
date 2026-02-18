@@ -17,7 +17,40 @@ Validation:
 ```bash
 npm test
 npm run build
+npm run e2e:smoke
 ```
+
+One-shot critical design audit:
+
+```bash
+npm run audit:design
+```
+
+Install browser runtime for E2E once:
+
+```bash
+npx playwright install chromium
+```
+
+## Agent Visual Loop (Codex + Playwright MCP)
+
+Repo ships with `.codex/config.toml` that enables a Playwright MCP server so Codex can open the app, click through flows, and inspect screenshots/traces.
+
+Local loop:
+
+```bash
+npm run dev:host
+codex
+```
+
+Optional direct MCP launch:
+
+```bash
+npm run mcp:playwright
+```
+
+Artifacts from MCP browser sessions are written to `.artifacts/playwright-mcp/`.
+Playwright test artifacts are written to `test-results/` and `playwright-report/`.
 
 ## Puzzle Data (Static, No Per-Puzzle API Calls)
 

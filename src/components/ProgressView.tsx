@@ -232,7 +232,7 @@ export function ProgressView({ attempts, sessions }: ProgressViewProps) {
   const totalPoints = Math.max(0, filteredAttempts.length - movingAverageWindow + 1);
 
   return (
-    <section className="progress-view">
+    <section className="progress-view" data-testid="progress-view">
       <article className="panel progress-filter-panel">
         <div className="progress-filter-top">
           <h3>Trend Filters</h3>
@@ -242,6 +242,7 @@ export function ProgressView({ attempts, sessions }: ProgressViewProps) {
           <button
             type="button"
             className={`exercise-pill ${selectedExercise === "square_color" ? "active" : ""}`}
+            data-testid="progress-pill-square-color"
             onClick={() => setSelectedExercise("square_color")}
           >
             Square Color
@@ -249,6 +250,7 @@ export function ProgressView({ attempts, sessions }: ProgressViewProps) {
           <button
             type="button"
             className={`exercise-pill ${selectedExercise === "puzzle_recall" ? "active" : ""}`}
+            data-testid="progress-pill-puzzle-recall"
             onClick={() => setSelectedExercise("puzzle_recall")}
           >
             Puzzle Recall

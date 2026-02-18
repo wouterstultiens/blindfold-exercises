@@ -34,7 +34,7 @@ export function BoardView({ fen, orientation = "white", variant = "default" }: B
   }, [variant]);
 
   return (
-    <div className={`board-shell${variant === "compact" ? " compact" : ""}`} ref={shellRef}>
+    <div className={`board-shell${variant === "compact" ? " compact" : ""}`} data-testid="board-container" ref={shellRef}>
       <Chessboard
         id={`board-${fen}`}
         position={fen}

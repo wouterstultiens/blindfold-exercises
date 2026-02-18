@@ -693,10 +693,20 @@ export default function App() {
       </header>
 
       <nav className="tabbar" aria-label="App sections">
-        <button type="button" className={`tab-btn ${activeTab === "training" ? "active" : ""}`} onClick={() => setActiveTab("training")}>
+        <button
+          type="button"
+          className={`tab-btn ${activeTab === "training" ? "active" : ""}`}
+          data-testid="training-tab"
+          onClick={() => setActiveTab("training")}
+        >
           Training
         </button>
-        <button type="button" className={`tab-btn ${activeTab === "progress" ? "active" : ""}`} onClick={() => setActiveTab("progress")}>
+        <button
+          type="button"
+          className={`tab-btn ${activeTab === "progress" ? "active" : ""}`}
+          data-testid="progress-tab"
+          onClick={() => setActiveTab("progress")}
+        >
           Progress
         </button>
       </nav>
@@ -755,6 +765,7 @@ export default function App() {
               <button
                 type="button"
                 className="btn primary"
+                data-testid="start-session-btn"
                 onClick={() => {
                   void startExercise();
                 }}
@@ -762,7 +773,13 @@ export default function App() {
               >
                 Start
               </button>
-              <button type="button" className="btn secondary" onClick={endSession} disabled={!activeSession || isDeleting}>
+              <button
+                type="button"
+                className="btn secondary"
+                data-testid="end-session-btn"
+                onClick={endSession}
+                disabled={!activeSession || isDeleting}
+              >
                 End Session
               </button>
               <button
@@ -823,11 +840,17 @@ export default function App() {
       )}
 
       {isFocusMode && isExerciseRunning ? (
-        <section className="focus-overlay" aria-label="Focused training">
+        <section className="focus-overlay" data-testid="focused-overlay" aria-label="Focused training">
           <div className="focus-shell">
             <div className="focus-top">
               <p className="muted">Focused mode</p>
-              <button type="button" className="btn secondary" onClick={endSession} disabled={!activeSession || isDeleting}>
+              <button
+                type="button"
+                className="btn secondary"
+                data-testid="stop-session-btn"
+                onClick={endSession}
+                disabled={!activeSession || isDeleting}
+              >
                 Stop
               </button>
             </div>

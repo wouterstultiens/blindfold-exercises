@@ -4,6 +4,7 @@
 
 - Runtime: Node.js 20+
 - Frontend: React 18, TypeScript 5, Vite 6
+- E2E/browser tooling: Playwright (`@playwright/test`) + Playwright MCP
 - Chess logic: `chess.js`
 - Board UI: `react-chessboard`
 - Puzzle build tooling: Python 3, `python-chess`, `zstandard`
@@ -44,6 +45,9 @@
   - guest: local-only reset
   - signed-in: delete attempts/sessions in Supabase first, then clear local
 - No secrets in `docs/`.
+- Browser smoke checks target desktop Chromium + iPhone + small Android viewports.
+- Keep stable `data-testid` hooks for core controls used by agent/E2E flows.
+- Repo-level `AGENTS.md` defines an automatic UI/design audit loop (`npm run audit:design`) for Codex.
 
 ## Project Structure
 
@@ -56,6 +60,12 @@
 |-- scripts/
 |   |-- build_lichess_puzzles.py
 |   `-- download_lichess_db.py
+|-- e2e/
+|   |-- design/
+|   `-- smoke/
+|-- AGENTS.md
+|-- playwright.config.ts
+|-- .codex/config.toml
 |-- src/
 |   |-- App.tsx
 |   |-- styles.css
@@ -85,4 +95,6 @@
 - Keep exercise logic pure where practical.
 - Persist locally first, then sync.
 - Keep tests beside domain modules as `*.test.ts`.
+- Keep browser smoke flows under `e2e/smoke/*.spec.ts`.
+- Keep design capture flows under `e2e/design/*.spec.ts`.
 - Commit docs updates with code changes whenever rules/workflow change.

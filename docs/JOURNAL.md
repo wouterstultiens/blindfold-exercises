@@ -1,4 +1,18 @@
 ## [2026-02-18]
+- Done: Made Codex web profile default in `.codex/config.toml` and required Playwright MCP startup, so browser tooling is auto-enabled when launching Codex in-repo.
+- Done: Added one-shot `npm run audit:design` pipeline (unit tests + build + smoke + design-capture Playwright runs).
+- Done: Added `AGENTS.md` rule to auto-run critical design audits when requested, then iterate fixes with evidence from screenshots/traces.
+- Done: Added visual capture spec (`e2e/design/critical-views.spec.ts`) for training/focused/progress design snapshots across desktop+iPhone+Pixel emulation.
+- Next: Ask Codex for a critical design review and let it execute the full audit loop, then implement the top severity UI findings.
+
+## [2026-02-18]
+- Done: Added Codex browser automation setup with `.codex/config.toml` Playwright MCP server (`--isolated`, traces, artifact output).
+- Done: Added Playwright smoke infrastructure (`playwright.config.ts`, `e2e/smoke/*`) for desktop + iPhone + Pixel viewport checks.
+- Done: Added stable `data-testid` hooks for training/progress tabs, start/stop controls, focused overlay, board, and grading actions.
+- Done: Updated scripts/docs for local agent visual loop (`dev:host`, `e2e`, `e2e:smoke`, `e2e:ui`) and artifact handling.
+- Next: Run a Codex-guided visual polish pass in focused mode and fix any layout/ergonomic regressions found in screenshots/traces.
+
+## [2026-02-18]
 - Done: Reworked focused mode for mobile real estate: overlay is now scrollable with safe-area padding (`dvh` + `env()`), compact board sizing, and sticky/reachable grading controls.
 - Done: Added focused-card variant with larger touch targets (44px+ baseline, 56px in focused mode) and compact reveal state showing only small continuation text + board + right/wrong actions.
 - Done: Added compact `BoardView` variant to cap board size in focused answer view for shorter screens.
