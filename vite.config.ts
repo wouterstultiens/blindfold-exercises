@@ -14,7 +14,7 @@ export default defineConfig({
       manifest: {
         name: "Blindfold Chess Trainer",
         short_name: "BlindfoldTrainer",
-        description: "Adaptive blindfold chess training with progress tracking.",
+        description: "Two-exercise blindfold trainer with synced progress across devices.",
         theme_color: "#0d1b2a",
         background_color: "#f6f7fb",
         display: "standalone",

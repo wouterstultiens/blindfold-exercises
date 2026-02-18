@@ -1,53 +1,113 @@
-import { useEffect, useMemo, useRef } from "react";
-import { stageDisplayName, stagePromptText } from "../engine/exercises";
-import type { ExerciseItem } from "../types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { evaluateSquareColorAnswer, modeDisplayName, puzzleSideLabel } from "../engine/exercises";
+import type { ExerciseItem, PuzzleRecallItem, SquareColorItem } from "../types";
 import { BoardView } from "./BoardView";
 
 interface ExerciseCardProps {
   item: ExerciseItem;
   attemptsInSession: number;
   disabled?: boolean;
-  onSubmit: (answer: string, latencyMs: number) => void;
+  onSquareSubmit: (answer: "black" | "white", latencyMs: number, evaluation: { correct: boolean; expected: string }) => void;
+  onPuzzleSubmit: (correct: boolean, latencyMs: number) => void;
 }
 
-export function ExerciseCard({ item, attemptsInSession, disabled = false, onSubmit }: ExerciseCardProps) {
-  const promptText = useMemo(() => stagePromptText(item), [item]);
+function PieceLines({ item }: { item: PuzzleRecallItem }) {
+  const lines = useMemo(() => [
+    `White: ${item.whitePieces.join(", ")}`,
+    `Black: ${item.blackPieces.join(", ")}`
+  ], [item.blackPieces, item.whitePieces]);
+
+  return (
+    <div className="piece-lines">
+      {lines.map((line) => (
+        <p key={line}>{line}</p>
+      ))}
+    </div>
+  );
+}
+
+export function ExerciseCard({ item, attemptsInSession, disabled = false, onSquareSubmit, onPuzzleSubmit }: ExerciseCardProps) {
   const startedAtRef = useRef<number>(Date.now());
+  const [revealed, setRevealed] = useState<boolean>(false);
 
   useEffect(() => {
     startedAtRef.current = Date.now();
+    setRevealed(false);
   }, [item.id]);
 
-  const showBoard = item.stage === "mate_in_1" || item.stage === "mate_in_2";
-  const fen = showBoard ? ((item.prompt as { fen: string }).fen ?? "") : "";
+  if (item.mode === "square_color") {
+    const squareItem = item as SquareColorItem;
+    return (
+      <section className="exercise-card">
+        <div className="exercise-header">
+          <p className="kicker">{modeDisplayName(item.mode)}</p>
+          <p className="muted">Attempts in session: {attemptsInSession}</p>
+        </div>
+        <p className="prompt">What color is square {squareItem.square}?</p>
+        <div className="choices">
+          {(["black", "white"] as const).map((choice) => (
+            <button
+              key={choice}
+              className="choice-btn"
+              type="button"
+              disabled={disabled}
+              onClick={() =>
+                onSquareSubmit(choice, Date.now() - startedAtRef.current, evaluateSquareColorAnswer(squareItem, choice))
+              }
+            >
+              {choice}
+            </button>
+          ))}
+        </div>
+      </section>
+    );
+  }
 
+  const puzzleItem = item as PuzzleRecallItem;
   return (
     <section className="exercise-card">
       <div className="exercise-header">
-        <p className="kicker">{stageDisplayName(item.stage)}</p>
-        <p className="muted">Solved this session: {attemptsInSession}</p>
+        <p className="kicker">{modeDisplayName(item.mode)}</p>
+        <p className="muted">Attempts in session: {attemptsInSession}</p>
       </div>
-      <p className="prompt">{promptText}</p>
 
-      {showBoard ? (
-        <div className="board-wrap">
-          <BoardView fen={fen} />
-        </div>
-      ) : null}
+      <p className="prompt">{puzzleSideLabel(puzzleItem.sideToMove)}</p>
+      <p className="muted">Rating {puzzleItem.rating} | Pieces {puzzleItem.pieceCount}</p>
+      <PieceLines item={puzzleItem} />
 
-      <div className="choices">
-        {item.choices.map((choice) => (
-          <button
-            key={choice}
-            className="choice-btn"
-            type="button"
-            disabled={disabled}
-            onClick={() => onSubmit(choice, Date.now() - startedAtRef.current)}
-          >
-            {choice}
-          </button>
-        ))}
-      </div>
+      {!revealed ? (
+        <button className="btn primary" type="button" disabled={disabled} onClick={() => setRevealed(true)}>
+          View Answer
+        </button>
+      ) : (
+        <>
+          <article className="answer-box">
+            <h3>Continuation</h3>
+            <p>{puzzleItem.continuationText}</p>
+          </article>
+          <div className="board-wrap">
+            <BoardView fen={puzzleItem.fen} orientation={puzzleItem.sideToMove === "b" ? "black" : "white"} />
+          </div>
+          <div className="choices">
+            <button
+              className="choice-btn good"
+              type="button"
+              disabled={disabled}
+              onClick={() => onPuzzleSubmit(true, Date.now() - startedAtRef.current)}
+            >
+              I got it right
+            </button>
+            <button
+              className="choice-btn bad"
+              type="button"
+              disabled={disabled}
+              onClick={() => onPuzzleSubmit(false, Date.now() - startedAtRef.current)}
+            >
+              I got it wrong
+            </button>
+          </div>
+        </>
+      )}
     </section>
   );
 }

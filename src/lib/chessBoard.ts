@@ -11,7 +11,7 @@ export function squareColor(square: string): "black" | "white" {
   if (fileIndex < 0 || rank < 1 || rank > 8) {
     throw new Error(`Invalid square: ${square}`);
   }
-  return (fileIndex + rank) % 2 === 0 ? "black" : "white";
+  return (fileIndex + rank) % 2 === 1 ? "black" : "white";
 }
 
 export function sameFile(squareA: string, squareB: string): boolean {

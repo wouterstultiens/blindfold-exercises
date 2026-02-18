@@ -1,56 +1,104 @@
-import { recentAccuracy, summarizeCategoryStats } from "../engine/session";
-import { stageDisplayName } from "../engine/exercises";
-import type { AttemptRecord, SessionRecord, UserProfile } from "../types";
+import { modeDisplayName } from "../engine/exercises";
+import { puzzleComboStats, summarizeModeStats, summarizeSessions } from "../engine/session";
+import type { AttemptRecord, SessionRecord } from "../types";
 
 interface DashboardProps {
-  profile: UserProfile;
   attempts: AttemptRecord[];
   sessions: SessionRecord[];
 }
 
-export function Dashboard({ profile, attempts, sessions }: DashboardProps) {
-  const categoryStats = summarizeCategoryStats(attempts);
+function settingsLabel(session: SessionRecord): string {
+  if (session.mode !== "puzzle_recall" || !session.settings_payload) {
+    return "-";
+  }
+  return `${session.settings_payload.maxPieces} pieces @ ${session.settings_payload.targetRating}`;
+}
+
+export function Dashboard({ attempts, sessions }: DashboardProps) {
+  const modeStats = summarizeModeStats(attempts);
+  const sessionRows = summarizeSessions(sessions, attempts);
+  const comboRows = puzzleComboStats(attempts);
 
   return (
     <section className="dashboard">
-      <div className="stats-grid">
-        <article className="stat-card">
-          <h3>Level</h3>
-          <p className="value">{profile.level}</p>
-        </article>
-        <article className="stat-card">
-          <h3>XP</h3>
-          <p className="value">{profile.xp}</p>
-        </article>
-        <article className="stat-card">
-          <h3>Streak</h3>
-          <p className="value">{profile.streak} days</p>
-        </article>
-        <article className="stat-card">
-          <h3>Sessions</h3>
-          <p className="value">{sessions.filter((session) => session.status === "completed").length}</p>
-        </article>
-      </div>
-
       <article className="panel">
-        <h3>Category Progress</h3>
+        <h3>Mode Progress</h3>
         <div className="table">
-          <div className="row row-5 header">
-            <span>Category</span>
-            <span>Accuracy</span>
+          <div className="row row-4 header">
+            <span>Mode</span>
             <span>Attempts</span>
+            <span>Accuracy</span>
             <span>Avg Time</span>
-            <span>Recent</span>
           </div>
-          {categoryStats.map((row) => (
-            <div className="row row-5" key={row.stage}>
-              <span>{stageDisplayName(row.stage)}</span>
-              <span>{Math.round(row.accuracy * 100)}%</span>
+          {modeStats.map((row) => (
+            <div className="row row-4" key={row.mode}>
+              <span>{modeDisplayName(row.mode)}</span>
               <span>{row.attempts}</span>
-              <span>{row.avgLatencyMs > 0 ? `${(row.avgLatencyMs / 1000).toFixed(1)}s` : "-"}</span>
-              <span>{Math.round(recentAccuracy(attempts, row.stage) * 100)}%</span>
+              <span>{Math.round(row.accuracy * 100)}%</span>
+              <span>{row.avgLatencyMs ? `${(row.avgLatencyMs / 1000).toFixed(1)}s` : "-"}</span>
             </div>
           ))}
+        </div>
+      </article>
+
+      <article className="panel">
+        <h3>Puzzle Combo Scores</h3>
+        <div className="table">
+          <div className="row row-4 header">
+            <span>Settings</span>
+            <span>Attempts</span>
+            <span>Correct %</span>
+            <span>Range</span>
+          </div>
+          {comboRows.length === 0 ? (
+            <div className="row row-4">
+              <span>No puzzle attempts yet.</span>
+              <span>-</span>
+              <span>-</span>
+              <span>-</span>
+            </div>
+          ) : (
+            comboRows.map((row) => (
+              <div className="row row-4" key={`${row.maxPieces}-${row.targetRating}`}>
+                <span>{row.maxPieces} pieces / {row.targetRating}</span>
+                <span>{row.attempts}</span>
+                <span>{Math.round(row.correctPercent)}%</span>
+                <span>{row.targetRating - 100} to {row.targetRating + 100}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </article>
+
+      <article className="panel">
+        <h3>Session History</h3>
+        <div className="table">
+          <div className="row row-5 header">
+            <span>Date</span>
+            <span>Mode</span>
+            <span>Settings</span>
+            <span>Attempts</span>
+            <span>Accuracy</span>
+          </div>
+          {sessionRows.length === 0 ? (
+            <div className="row row-5">
+              <span>No completed sessions yet.</span>
+              <span>-</span>
+              <span>-</span>
+              <span>-</span>
+              <span>-</span>
+            </div>
+          ) : (
+            sessionRows.map(({ session, accuracy }) => (
+              <div className="row row-5" key={session.id}>
+                <span>{new Date(session.ended_at).toLocaleString()}</span>
+                <span>{modeDisplayName(session.mode)}</span>
+                <span>{settingsLabel(session)}</span>
+                <span>{session.attempt_count}</span>
+                <span>{Math.round(accuracy * 100)}%</span>
+              </div>
+            ))
+          )}
         </div>
       </article>
     </section>

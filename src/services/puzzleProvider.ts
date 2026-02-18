@@ -1,251 +1,368 @@
-import { Chess, type PieceSymbol } from "chess.js";
-import { MATE_IN_1_FALLBACK, MATE_IN_2_FALLBACK, type FallbackPuzzle } from "../data/puzzles";
-import { pickRandom, shuffle } from "../lib/random";
-import type { ExerciseStage } from "../types";
+import { pickRandom } from "../lib/random";
+import type { PuzzleSettings, PuzzleSource } from "../types";
 
-type PuzzleAngle = "mateIn1" | "mateIn2";
-type MateStage = Extract<ExerciseStage, "mate_in_1" | "mate_in_2">;
-
-interface LichessPuzzleResponse {
-  game: {
-    pgn: string;
-  };
-  puzzle: {
-    id: string;
-    rating: number;
-    themes: string[];
-    solution: string[];
-    initialPly: number;
-  };
-}
-
-interface CacheBucket {
-  updatedAt: string;
-  items: MatePuzzleSeed[];
-}
-
-interface PuzzleCache {
-  mateIn1: CacheBucket;
-  mateIn2: CacheBucket;
-}
-
-export interface MatePuzzleSeed {
-  id: string;
+export interface PuzzleRecallSeed {
+  puzzleId: string;
   fen: string;
-  solution: string;
-  choices: string[];
-  theme: string;
-  source: "lichess" | "fallback";
-  rating?: number;
+  sideToMove: "w" | "b";
+  rating: number;
+  pieceCount: number;
+  whitePieces: string[];
+  blackPieces: string[];
+  continuationSan: string[];
+  continuationText: string;
+  themes?: string[];
+  source: PuzzleSource;
 }
 
-const PUZZLE_CACHE_KEY = "blindfold.lichess.cache.v1";
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const FETCH_BATCH_SIZE = 6;
-const MIN_CACHE_ITEMS = 2;
+interface PuzzleManifest {
+  version: number;
+  generatedAt: string;
+  files: Array<{
+    bucket: number;
+    file: string;
+    count: number;
+  }>;
+}
 
-function emptyCache(): PuzzleCache {
+interface RawPuzzleSeed {
+  puzzleId: unknown;
+  fen: unknown;
+  sideToMove: unknown;
+  rating: unknown;
+  pieceCount: unknown;
+  whitePieces: unknown;
+  blackPieces: unknown;
+  continuationSan: unknown;
+  continuationText: unknown;
+  themes?: unknown;
+  source?: unknown;
+}
+
+const RECENT_PUZZLES_KEY = "blindfold.puzzle-recent.v1";
+const RECENT_IDS_SIZE = 40;
+const RATING_BUCKET_SIZE = 100;
+const MANIFEST_FILE = "manifest.json";
+const MISSING_DB_HINT = "Puzzle DB not found. Run `npm run puzzles:build` to generate `public/puzzles/*`.";
+const MAX_CLEAR_CONTINUATION_PLIES = 4;
+const LOW_PIECE_ENDGAME_THRESHOLD = 10;
+const ENDGAME_THEMES = new Set([
+  "endgame",
+  "pawnEndgame",
+  "rookEndgame",
+  "bishopEndgame",
+  "knightEndgame",
+  "queenEndgame",
+  "queenRookEndgame"
+]);
+const EXCLUDED_THEMES = new Set([
+  ...ENDGAME_THEMES,
+  "veryLong"
+]);
+const TACTICAL_THEMES = new Set([
+  "oneMove",
+  "short",
+  "fork",
+  "pin",
+  "skewer",
+  "discoveredAttack",
+  "doubleCheck",
+  "hangingPiece",
+  "trappedPiece",
+  "sacrifice",
+  "deflection",
+  "attraction",
+  "interference",
+  "clearance",
+  "capturingDefender",
+  "xRayAttack",
+  "backRankMate",
+  "smotheredMate",
+  "arabianMate",
+  "anastasiaMate",
+  "bodenMate",
+  "dovetailMate",
+  "hookMate",
+  "doubleBishopMate"
+]);
+
+let manifestPromise: Promise<PuzzleManifest> | null = null;
+const shardCache = new Map<number, Promise<PuzzleRecallSeed[]>>();
+
+function baseAssetPath(): string {
+  const base = import.meta.env.BASE_URL ?? "/";
+  return base.endsWith("/") ? base : `${base}/`;
+}
+
+function puzzleAssetUrl(file: string): string {
+  return `${baseAssetPath()}puzzles/${file}`;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function parseSeed(raw: RawPuzzleSeed): PuzzleRecallSeed | null {
+  const themes = raw.themes;
+  const parsedThemes = isStringArray(themes) ? themes : undefined;
+  const source = raw.source === "tablebase_api" ? "tablebase_api" : "local_db";
+
+  if (
+    typeof raw.puzzleId !== "string" ||
+    typeof raw.fen !== "string" ||
+    (raw.sideToMove !== "w" && raw.sideToMove !== "b") ||
+    typeof raw.rating !== "number" ||
+    typeof raw.pieceCount !== "number" ||
+    !isStringArray(raw.whitePieces) ||
+    !isStringArray(raw.blackPieces) ||
+    !isStringArray(raw.continuationSan) ||
+    raw.continuationSan.length === 0 ||
+    typeof raw.continuationText !== "string"
+  ) {
+    return null;
+  }
+
   return {
-    mateIn1: { updatedAt: new Date(0).toISOString(), items: [] },
-    mateIn2: { updatedAt: new Date(0).toISOString(), items: [] }
+    puzzleId: raw.puzzleId,
+    fen: raw.fen,
+    sideToMove: raw.sideToMove,
+    rating: raw.rating,
+    pieceCount: raw.pieceCount,
+    whitePieces: raw.whitePieces,
+    blackPieces: raw.blackPieces,
+    continuationSan: raw.continuationSan,
+    continuationText: raw.continuationText,
+    themes: parsedThemes,
+    source
   };
 }
 
-function readCache(): PuzzleCache {
-  const raw = localStorage.getItem(PUZZLE_CACHE_KEY);
+function hasClearTacticalTheme(themes: string[], pieceCount: number): boolean {
+  if (themes.length === 0) {
+    return false;
+  }
+
+  if (themes.includes("veryLong")) {
+    return false;
+  }
+
+  const hasEndgameTheme = themes.some((theme) => ENDGAME_THEMES.has(theme));
+  const hasTacticalOrMateTheme = themes.some((theme) => theme.startsWith("mate") || TACTICAL_THEMES.has(theme));
+
+  if (hasEndgameTheme) {
+    return pieceCount <= LOW_PIECE_ENDGAME_THRESHOLD || hasTacticalOrMateTheme;
+  }
+
+  if (themes.some((theme) => EXCLUDED_THEMES.has(theme))) {
+    return false;
+  }
+
+  return hasTacticalOrMateTheme;
+}
+
+function hasFallbackMateSignal(continuationSan: string[]): boolean {
+  return continuationSan.some((san) => /#/.test(san));
+}
+
+function isClearShortPuzzle(seed: PuzzleRecallSeed): boolean {
+  if (seed.continuationSan.length > MAX_CLEAR_CONTINUATION_PLIES) {
+    return false;
+  }
+
+  if (seed.source === "tablebase_api") {
+    return true;
+  }
+
+  if (seed.themes && seed.themes.length > 0) {
+    return hasClearTacticalTheme(seed.themes, seed.pieceCount);
+  }
+
+  return hasFallbackMateSignal(seed.continuationSan);
+}
+
+function matchesSettings(seed: PuzzleRecallSeed, settings: PuzzleSettings): boolean {
+  return (
+    seed.pieceCount <= settings.maxPieces &&
+    Math.abs(seed.rating - settings.targetRating) <= 100 &&
+    isClearShortPuzzle(seed)
+  );
+}
+
+function readRecentPuzzleIds(): string[] {
+  const raw = localStorage.getItem(RECENT_PUZZLES_KEY);
   if (!raw) {
-    return emptyCache();
+    return [];
   }
   try {
-    const parsed = JSON.parse(raw) as PuzzleCache;
-    if (!parsed?.mateIn1 || !parsed?.mateIn2) {
-      return emptyCache();
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
     }
-    return parsed;
+    return parsed.filter((item): item is string => typeof item === "string").slice(-RECENT_IDS_SIZE);
   } catch {
-    return emptyCache();
+    return [];
   }
 }
 
-function writeCache(cache: PuzzleCache): void {
-  localStorage.setItem(PUZZLE_CACHE_KEY, JSON.stringify(cache));
+function markRecentPuzzleId(puzzleId: string): void {
+  const next = readRecentPuzzleIds().filter((id) => id !== puzzleId);
+  next.push(puzzleId);
+  localStorage.setItem(RECENT_PUZZLES_KEY, JSON.stringify(next.slice(-RECENT_IDS_SIZE)));
 }
 
-function stageToAngle(stage: MateStage): PuzzleAngle {
-  return stage === "mate_in_1" ? "mateIn1" : "mateIn2";
-}
-
-function uciToMovePayload(uci: string): { from: string; to: string; promotion?: PieceSymbol } {
-  const from = uci.slice(0, 2);
-  const to = uci.slice(2, 4);
-  const promotion = uci.length > 4 ? (uci[4] as PieceSymbol) : undefined;
-  return { from, to, promotion };
-}
-
-function isUciLegal(chess: Chess, uci: string): boolean {
-  const { from, to, promotion } = uciToMovePayload(uci);
-  return chess
-    .moves({ verbose: true })
-    .some((move) => move.from === from && move.to === to && (!promotion || move.promotion === promotion));
-}
-
-function buildFenAtPuzzleStart(pgn: string, initialPly: number, firstMoveUci: string): string {
-  const fullGame = new Chess();
-  fullGame.loadPgn(pgn);
-  const history = fullGame.history();
-  const candidateOffsets = [-2, -1, 0, 1, 2];
-
-  for (const offset of candidateOffsets) {
-    const ply = initialPly + offset;
-    if (ply < 0) {
-      continue;
-    }
-    const chess = new Chess();
-    for (let index = 0; index < Math.min(ply, history.length); index += 1) {
-      chess.move(history[index] as string);
-    }
-    if (isUciLegal(chess, firstMoveUci)) {
-      return chess.fen();
-    }
-  }
-
-  const fallback = new Chess();
-  for (let index = 0; index < Math.min(initialPly, history.length); index += 1) {
-    fallback.move(history[index] as string);
-  }
-  return fallback.fen();
-}
-
-function sanFromUci(fen: string, uci: string): string {
-  const chess = new Chess(fen);
-  const move = chess.move(uciToMovePayload(uci));
-  if (!move) {
-    throw new Error(`Could not map UCI move ${uci} from fen ${fen}`);
-  }
-  return move.san;
-}
-
-function buildChoices(fen: string, solutionSan: string): string[] {
-  const legalSanMoves = new Chess(fen).moves();
-  const decoys = shuffle(legalSanMoves.filter((move) => move !== solutionSan)).slice(0, 3);
-  return shuffle([solutionSan, ...decoys]);
-}
-
-export function lichessToMateSeed(payload: LichessPuzzleResponse, stage: MateStage): MatePuzzleSeed {
-  const firstMove = payload.puzzle.solution[0];
-  if (!firstMove) {
-    throw new Error("Puzzle has no solution line.");
-  }
-  const fen = buildFenAtPuzzleStart(payload.game.pgn, payload.puzzle.initialPly, firstMove);
-  const solution = sanFromUci(fen, firstMove);
-  const mateTheme = stage === "mate_in_1" ? "mateIn1" : "mateIn2";
-
-  return {
-    id: `lichess-${payload.puzzle.id}`,
-    fen,
-    solution,
-    choices: buildChoices(fen, solution),
-    theme: payload.puzzle.themes.find((theme) => theme === mateTheme) ?? mateTheme,
-    source: "lichess",
-    rating: payload.puzzle.rating
-  };
-}
-
-function fallbackForStage(stage: MateStage): MatePuzzleSeed {
-  const pool = stage === "mate_in_1" ? MATE_IN_1_FALLBACK : MATE_IN_2_FALLBACK;
-  const puzzle = pickRandom(pool);
-  const solution = sanFromUci(puzzle.fen, puzzle.solutionUci);
-  return {
-    id: puzzle.id,
-    fen: puzzle.fen,
-    solution,
-    choices: buildChoices(puzzle.fen, solution),
-    theme: puzzle.theme,
-    source: "fallback"
-  };
-}
-
-async function fetchLichessPuzzle(angle: PuzzleAngle): Promise<LichessPuzzleResponse> {
-  const response = await fetch(`https://lichess.org/api/puzzle/next?angle=${angle}`, {
-    headers: { Accept: "application/json" }
-  });
+async function fetchJson(url: string): Promise<unknown> {
+  const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
-    throw new Error(`Lichess puzzle fetch failed (${response.status})`);
+    if (response.status === 404) {
+      throw new Error(MISSING_DB_HINT);
+    }
+    throw new Error(`Failed to load puzzle asset (${response.status}): ${url}`);
   }
-  return (await response.json()) as LichessPuzzleResponse;
+  return response.json();
 }
 
-function isFresh(bucket: CacheBucket): boolean {
-  return Date.now() - new Date(bucket.updatedAt).getTime() <= CACHE_TTL_MS;
+function parseManifest(raw: unknown): PuzzleManifest {
+  if (!raw || typeof raw !== "object") {
+    throw new Error(`Invalid puzzle manifest. ${MISSING_DB_HINT}`);
+  }
+
+  const candidate = raw as {
+    version?: unknown;
+    generatedAt?: unknown;
+    files?: unknown;
+  };
+
+  if (typeof candidate.version !== "number" || typeof candidate.generatedAt !== "string" || !Array.isArray(candidate.files)) {
+    throw new Error(`Invalid puzzle manifest shape. ${MISSING_DB_HINT}`);
+  }
+
+  const files = candidate.files
+    .map((entry) => {
+      const fileEntry = entry as { bucket?: unknown; file?: unknown; count?: unknown };
+      if (
+        typeof fileEntry?.bucket !== "number" ||
+        typeof fileEntry?.file !== "string" ||
+        typeof fileEntry?.count !== "number"
+      ) {
+        return null;
+      }
+      return {
+        bucket: fileEntry.bucket,
+        file: fileEntry.file,
+        count: fileEntry.count
+      };
+    })
+    .filter((entry): entry is { bucket: number; file: string; count: number } => entry !== null);
+
+  if (files.length === 0) {
+    throw new Error(`Puzzle manifest has no shard files. ${MISSING_DB_HINT}`);
+  }
+
+  return {
+    version: candidate.version,
+    generatedAt: candidate.generatedAt,
+    files
+  };
 }
 
-async function refillBucket(stage: MateStage): Promise<MatePuzzleSeed[]> {
-  const angle = stageToAngle(stage);
-  const settled = await Promise.allSettled(
-    Array.from({ length: FETCH_BATCH_SIZE }, async () => {
-      const payload = await fetchLichessPuzzle(angle);
-      return lichessToMateSeed(payload, stage);
+async function loadManifest(): Promise<PuzzleManifest> {
+  if (!manifestPromise) {
+    manifestPromise = fetchJson(puzzleAssetUrl(MANIFEST_FILE))
+      .then(parseManifest)
+      .catch((error) => {
+        manifestPromise = null;
+        throw error;
+      });
+  }
+  return manifestPromise;
+}
+
+async function loadShard(bucket: number): Promise<PuzzleRecallSeed[]> {
+  const cached = shardCache.get(bucket);
+  if (cached) {
+    return cached;
+  }
+
+  const promise = (async () => {
+    const manifest = await loadManifest();
+    const fileEntry = manifest.files.find((file) => file.bucket === bucket);
+    if (!fileEntry) {
+      return [];
+    }
+
+    const raw = await fetchJson(puzzleAssetUrl(fileEntry.file));
+    if (!Array.isArray(raw)) {
+      throw new Error(`Invalid puzzle shard format: ${fileEntry.file}`);
+    }
+
+    return raw
+      .map((item) => parseSeed(item as RawPuzzleSeed))
+      .filter((item): item is PuzzleRecallSeed => item !== null);
+  })();
+
+  shardCache.set(
+    bucket,
+    promise.catch((error) => {
+      shardCache.delete(bucket);
+      throw error;
     })
   );
-
-  const fetched = settled
-    .filter((result): result is PromiseFulfilledResult<MatePuzzleSeed> => result.status === "fulfilled")
-    .map((result) => result.value);
-  const deduped = new Map(fetched.map((item) => [item.id, item]));
-  return [...deduped.values()];
+  return shardCache.get(bucket) as Promise<PuzzleRecallSeed[]>;
 }
 
-export async function getNextMatePuzzle(stage: MateStage): Promise<MatePuzzleSeed> {
-  const angle = stageToAngle(stage);
-  const cache = readCache();
-  const bucket = cache[angle];
+function bucketsForSettings(manifest: PuzzleManifest, settings: PuzzleSettings): number[] {
+  const minBucket = Math.floor((settings.targetRating - 100) / RATING_BUCKET_SIZE) * RATING_BUCKET_SIZE;
+  const maxBucket = Math.floor((settings.targetRating + 100) / RATING_BUCKET_SIZE) * RATING_BUCKET_SIZE;
 
-  if (bucket.items.length === 0 || !isFresh(bucket)) {
-    try {
-      const fetched = await refillBucket(stage);
-      cache[angle] = {
-        updatedAt: new Date().toISOString(),
-        items: fetched
-      };
-      writeCache(cache);
-    } catch {
-      if (bucket.items.length === 0) {
-        return fallbackForStage(stage);
-      }
+  return manifest.files
+    .map((file) => file.bucket)
+    .filter((bucket) => bucket >= minBucket && bucket <= maxBucket);
+}
+
+function dedupeSeeds(items: PuzzleRecallSeed[]): PuzzleRecallSeed[] {
+  return [...new Map(items.map((item) => [item.puzzleId, item])).values()];
+}
+
+export async function getNextPuzzle(settings: PuzzleSettings): Promise<PuzzleRecallSeed> {
+  const manifest = await loadManifest();
+  const buckets = bucketsForSettings(manifest, settings);
+
+  if (buckets.length === 0) {
+    throw new Error("No puzzle shard found for this rating range. Regenerate puzzle DB.");
+  }
+
+  const shardItems = await Promise.all(buckets.map((bucket) => loadShard(bucket)));
+  const matches = dedupeSeeds(shardItems.flat()).filter((seed) => matchesSettings(seed, settings));
+
+  if (matches.length === 0 && settings.maxPieces <= 7) {
+    const allBuckets = manifest.files.map((file) => file.bucket);
+    const allShardItems = await Promise.all(allBuckets.map((bucket) => loadShard(bucket)));
+    const tablebaseFallback = dedupeSeeds(allShardItems.flat()).filter(
+      (seed) => seed.source === "tablebase_api" && seed.pieceCount <= settings.maxPieces && isClearShortPuzzle(seed)
+    );
+    if (tablebaseFallback.length > 0) {
+      const fallbackChoice = pickRandom(tablebaseFallback);
+      markRecentPuzzleId(fallbackChoice.puzzleId);
+      return fallbackChoice;
     }
   }
 
-  const next = cache[angle].items.shift();
-  writeCache(cache);
-
-  if (!next) {
-    return fallbackForStage(stage);
+  if (matches.length === 0) {
+    throw new Error("No puzzle matched this max pieces and rating range. Try another setting.");
   }
 
-  if (cache[angle].items.length < MIN_CACHE_ITEMS) {
-    void refillBucket(stage)
-      .then((items) => {
-        const latest = readCache();
-        latest[angle] = {
-          updatedAt: new Date().toISOString(),
-          items: [...latest[angle].items, ...items].slice(-FETCH_BATCH_SIZE * 2)
-        };
-        writeCache(latest);
-      })
-      .catch(() => undefined);
-  }
-
-  return next;
+  const recentIds = new Set(readRecentPuzzleIds());
+  const fresh = matches.filter((seed) => !recentIds.has(seed.puzzleId));
+  const selected = pickRandom(fresh.length > 0 ? fresh : matches);
+  markRecentPuzzleId(selected.puzzleId);
+  return selected;
 }
 
-export function fallbackSeedFromDefinition(puzzle: FallbackPuzzle, stage: MateStage): MatePuzzleSeed {
-  const solution = sanFromUci(puzzle.fen, puzzle.solutionUci);
-  return {
-    id: puzzle.id,
-    fen: puzzle.fen,
-    solution,
-    choices: buildChoices(puzzle.fen, solution),
-    theme: puzzle.theme,
-    source: "fallback"
-  };
+export function toPieceLines(seed: Pick<PuzzleRecallSeed, "whitePieces" | "blackPieces">): string[] {
+  return [`White: ${seed.whitePieces.join(", ")}`, `Black: ${seed.blackPieces.join(", ")}`];
+}
+
+export function __resetPuzzleDbCacheForTests(): void {
+  manifestPromise = null;
+  shardCache.clear();
 }

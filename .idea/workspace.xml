@@ -12,22 +12,56 @@
       <entry key="_C:/Users/woute/OneDrive/Online Documenten/Python Projects/BlindfoldExercises" value="39lBaWlE2vbv6Z6xnCIvrRbQ0TJ" />
     </persistenceIdMap>
   </component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 0
-}]]></component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 0
+}</component>
   <component name="ProjectId" id="39lBaWlE2vbv6Z6xnCIvrRbQ0TJ" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;ai.playground.ignore.import.keys.banner.in.settings&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/Users/woute/OneDrive/Online Documenten/Python Projects/BlindfoldExercises&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;npm.puzzles:build -- --max-pieces 6.executor&quot;: &quot;Run&quot;,
+    &quot;ts.external.directory.path&quot;: &quot;C:\\Users\\woute\\OneDrive\\Online Documenten\\Python Projects\\BlindfoldExercises\\node_modules\\typescript\\lib&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\woute\OneDrive\Online Documenten\Python Projects\BlindfoldExercises" />
+    </key>
+  </component>
+  <component name="RunManager">
+    <configuration name="puzzles:build -- --max-pieces 6" type="js.build_tools.npm" temporary="true" nameIsGenerated="true">
+      <package-json value="$PROJECT_DIR$/package.json" />
+      <command value="run" />
+      <scripts>
+        <script value="puzzles:build" />
+      </scripts>
+      <arguments value="-- --max-pieces 6" />
+      <node-interpreter value="project" />
+      <envs />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="npm.puzzles:build -- --max-pieces 6" />
+      </list>
+    </recent_temporary>
+  </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -43,12 +77,21 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1771260840876</updated>
-      <workItem from="1771260842303" duration="3000" />
+      <workItem from="1771260842303" duration="6231000" />
+      <workItem from="1771344802141" duration="30000" />
+      <workItem from="1771350853297" duration="9332000" />
+      <workItem from="1771361682492" duration="2361000" />
     </task>
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+    <option name="exactExcludedFiles">
+      <list>
+        <option value="$PROJECT_DIR$/vite.config.d.ts" />
+        <option value="$PROJECT_DIR$/vite.config.js" />
+      </list>
+    </option>
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

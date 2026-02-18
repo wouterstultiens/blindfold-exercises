@@ -1,40 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { chooseNextDifficulty, updateStageSnapshot } from "./engine/adaptive";
-import { createMateExercise, evaluateAnswer, generateExercise, stageDisplayName } from "./engine/exercises";
-import { updateProfileAfterSession, xpForAttempt } from "./engine/scoring";
+import { createSquareColorItem, modeDisplayName } from "./engine/exercises";
 import { Dashboard } from "./components/Dashboard";
 import { ExerciseCard } from "./components/ExerciseCard";
 import {
   appendAttempt,
-  appendSession,
   getAttempts,
-  getProfile,
   getSessions,
-  getSnapshots,
+  replaceUserProgress,
   resetAllBlindfoldData,
-  saveAttempts,
-  saveProfile,
   saveSessions,
-  saveSnapshots,
-  upsertSession,
-  upsertSnapshot
+  upsertSession
 } from "./services/localDb";
-import { getNextMatePuzzle } from "./services/puzzleProvider";
+import { getNextPuzzle } from "./services/puzzleProvider";
 import { getSupabaseClient, hasSupabaseConfig, signInWithGitHub, signOut } from "./services/supabase";
 import { syncLocalProgress } from "./services/sync";
-import type {
-  AttemptRecord,
-  ExerciseItem,
-  ExerciseStage,
-  ProgressSnapshot,
-  SessionRecord,
-  SessionSummary,
-  UserProfile
-} from "./types";
+import type { AttemptRecord, ExerciseItem, ExerciseMode, PuzzleSettings, SessionRecord } from "./types";
 
 const GUEST_ID = "guest-local";
-const CATEGORY_OPTIONS: ExerciseStage[] = ["square_color", "mate_in_1", "mate_in_2"];
+const DEFAULT_PUZZLE_SETTINGS: PuzzleSettings = {
+  maxPieces: 7,
+  targetRating: 1500
+};
 
 function createId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -50,30 +36,64 @@ function appendOrReplaceSession(allSessions: SessionRecord[], nextSession: Sessi
   return copy;
 }
 
+function sameSettings(a: PuzzleSettings | null, b: PuzzleSettings | null): boolean {
+  if (!a && !b) {
+    return true;
+  }
+  if (!a || !b) {
+    return false;
+  }
+  return a.maxPieces === b.maxPieces && a.targetRating === b.targetRating;
+}
+
+function sessionContextMatches(session: SessionRecord, mode: ExerciseMode, settings: PuzzleSettings | null): boolean {
+  return session.mode === mode && sameSettings(session.settings_payload, settings);
+}
+
+function settingsForMode(mode: ExerciseMode, settings: PuzzleSettings): PuzzleSettings | null {
+  return mode === "puzzle_recall" ? settings : null;
+}
+
+function hydrateSessionSettings(sessions: SessionRecord[], attempts: AttemptRecord[]): SessionRecord[] {
+  const bySession = new Map<string, PuzzleSettings>();
+  for (const attempt of attempts) {
+    if (attempt.settings_payload) {
+      bySession.set(attempt.session_id, attempt.settings_payload);
+    }
+  }
+  return sessions.map((session) => {
+    if (session.mode !== "puzzle_recall" || session.settings_payload) {
+      return session;
+    }
+    const settings = bySession.get(session.id);
+    return settings ? { ...session, settings_payload: settings } : session;
+  });
+}
+
 export default function App() {
   const [userId, setUserId] = useState<string>(GUEST_ID);
   const [displayName, setDisplayName] = useState<string>("Guest");
-  const [selectedStage, setSelectedStage] = useState<ExerciseStage>("square_color");
+  const [selectedMode, setSelectedMode] = useState<ExerciseMode>("square_color");
+  const [puzzleSettings, setPuzzleSettings] = useState<PuzzleSettings>(DEFAULT_PUZZLE_SETTINGS);
   const [allAttempts, setAllAttempts] = useState<AttemptRecord[]>([]);
   const [allSessions, setAllSessions] = useState<SessionRecord[]>([]);
-  const [allSnapshots, setAllSnapshots] = useState<ProgressSnapshot[]>([]);
-  const [profile, setProfile] = useState<UserProfile>(() => getProfile(GUEST_ID, "Guest"));
   const [activeSession, setActiveSession] = useState<SessionRecord | null>(null);
+  const [isExerciseRunning, setIsExerciseRunning] = useState<boolean>(false);
   const [currentItem, setCurrentItem] = useState<ExerciseItem | null>(null);
-  const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [feedback, setFeedback] = useState<string>("");
   const [syncMessage, setSyncMessage] = useState<string>("Local mode active.");
   const [isLoadingItem, setIsLoadingItem] = useState<boolean>(false);
   const [isBootstrapped, setIsBootstrapped] = useState<boolean>(false);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const cleanupBootRef = useRef<{ userId: string | null; startedAtMs: number }>({
     userId: null,
     startedAtMs: Date.now()
   });
+  const syncingRef = useRef<boolean>(false);
 
   useEffect(() => {
     setAllAttempts(getAttempts());
     setAllSessions(getSessions());
-    setAllSnapshots(getSnapshots());
   }, []);
 
   useEffect(() => {
@@ -116,149 +136,52 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
-    setProfile(getProfile(userId, displayName));
-    setSummary(null);
-    setFeedback("");
-    setCurrentItem(null);
-    setActiveSession(null);
-  }, [userId, displayName]);
-
   const attempts = useMemo(() => allAttempts.filter((attempt) => attempt.user_id === userId), [allAttempts, userId]);
   const sessions = useMemo(() => allSessions.filter((session) => session.user_id === userId), [allSessions, userId]);
-  const snapshots = useMemo(
-    () => allSnapshots.filter((snapshot) => snapshot.user_id === userId),
-    [allSnapshots, userId]
-  );
-
-  const syncMutation = useMutation({
-    mutationFn: async () =>
-      syncLocalProgress({
-        attempts,
-        sessions,
-        snapshots,
-        profile
-      }),
-    onSuccess: (result) => {
-      setSyncMessage(result.message);
-      if (!result.synced) return;
-
-      const attemptsMarked = allAttempts.map((attempt) =>
-        attempt.user_id === userId ? { ...attempt, synced: true } : attempt
-      );
-      const sessionsMarked = allSessions.map((session) =>
-        session.user_id === userId ? { ...session, synced: true } : session
-      );
-      const snapshotsMarked = allSnapshots.map((snapshot) =>
-        snapshot.user_id === userId ? { ...snapshot, synced: true } : snapshot
-      );
-
-      setAllAttempts(attemptsMarked);
-      setAllSessions(sessionsMarked);
-      setAllSnapshots(snapshotsMarked);
-      saveAttempts(attemptsMarked);
-      saveSessions(sessionsMarked);
-      saveSnapshots(snapshotsMarked);
-    },
-    onError: (error: Error) => {
-      setSyncMessage(error.message);
-    }
-  });
 
   useEffect(() => {
-    if (!hasSupabaseConfig()) return;
-    const onOnline = () => {
-      if (!syncMutation.isPending) {
-        syncMutation.mutate();
-      }
-    };
-    window.addEventListener("online", onOnline);
-    return () => window.removeEventListener("online", onOnline);
-  }, [syncMutation]);
-
-  useEffect(() => {
-    if (!isBootstrapped) return;
-    if (cleanupBootRef.current.userId === userId) return;
-    cleanupBootRef.current.userId = userId;
-
-    const staleActive = getSessions().filter(
-      (session) =>
-        session.user_id === userId &&
-        session.status === "active" &&
-        Date.parse(session.started_at) < cleanupBootRef.current.startedAtMs
-    );
-    if (staleActive.length === 0) return;
-
-    let nextProfile = getProfile(userId, displayName);
-    let nextSessions = [...allSessions];
-
-    for (const stale of staleActive) {
-      const sessionAttempts = getAttempts().filter(
-        (attempt) => attempt.session_id === stale.id && attempt.user_id === stale.user_id
-      );
-      const closedAt = new Date().toISOString();
-      const durationS = Math.max(1, Math.round((Date.parse(closedAt) - Date.parse(stale.started_at)) / 1000));
-      const xpEarned = sessionAttempts.reduce((sum, attempt) => sum + xpForAttempt(attempt, nextProfile.streak), 0);
-      const baseCompleted: SessionRecord = {
-        ...stale,
-        ended_at: closedAt,
-        duration_s: durationS,
-        xp_earned: xpEarned,
-        status: "completed",
-        synced: false
-      };
-      if (sessionAttempts.length > 0) {
-        const profiled = updateProfileAfterSession(nextProfile, baseCompleted, sessionAttempts, snapshots);
-        nextProfile = profiled;
-        nextSessions = appendOrReplaceSession(nextSessions, { ...baseCompleted, streak_after: profiled.streak });
-      } else {
-        nextSessions = appendOrReplaceSession(nextSessions, baseCompleted);
-      }
+    if (!isBootstrapped) {
+      return;
     }
-
-    setProfile(nextProfile);
-    saveProfile(nextProfile);
-    setAllSessions(nextSessions);
-    saveSessions(nextSessions);
-    setActiveSession(null);
-    setCurrentItem(null);
-    setFeedback("Previous unfinished session was closed and saved.");
-  }, [isBootstrapped, userId, displayName, allSessions, snapshots]);
+    const currentActive = sessions.find((session) => session.status === "active") ?? null;
+    setActiveSession(currentActive);
+  }, [sessions, isBootstrapped]);
 
   function persistSession(nextSession: SessionRecord): void {
     upsertSession(nextSession);
     setAllSessions((previous) => appendOrReplaceSession(previous, nextSession));
-    setActiveSession((previous) => (previous?.id === nextSession.id ? nextSession : previous));
-  }
-
-  function difficultyForStage(stage: ExerciseStage): number {
-    const snapshot = snapshots.find((row) => row.stage === stage);
-    const stageAttempts = attempts.filter((attempt) => attempt.stage === stage).slice(-25);
-    return chooseNextDifficulty(snapshot, stageAttempts);
-  }
-
-  async function loadNextItem(stage: ExerciseStage): Promise<void> {
-    setIsLoadingItem(true);
-    try {
-      const difficulty = difficultyForStage(stage);
-      const next =
-        stage === "square_color"
-          ? generateExercise("square_color", difficulty)
-          : createMateExercise(stage, difficulty, await getNextMatePuzzle(stage));
-      setCurrentItem(next);
-    } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Failed to load puzzle.");
-    } finally {
-      setIsLoadingItem(false);
+    if (nextSession.status === "active") {
+      setActiveSession(nextSession);
+    } else if (activeSession?.id === nextSession.id) {
+      setActiveSession(null);
     }
   }
 
-  function startSession(): void {
-    if (activeSession) {
-      return;
+  function stopExerciseRun(): void {
+    setIsExerciseRunning(false);
+    setCurrentItem(null);
+  }
+
+  function completeSession(session: SessionRecord): SessionRecord {
+    if (session.status === "completed") {
+      return session;
     }
-    setSummary(null);
-    setFeedback("");
+    const endedAt = new Date().toISOString();
+    const sessionAttempts = getAttempts().filter((attempt) => attempt.session_id === session.id && attempt.user_id === session.user_id);
+    const completed: SessionRecord = {
+      ...session,
+      ended_at: endedAt,
+      duration_s: Math.max(1, Math.round((Date.parse(endedAt) - Date.parse(session.started_at)) / 1000)),
+      status: "completed",
+      attempt_count: sessionAttempts.length,
+      correct_count: sessionAttempts.filter((attempt) => attempt.correct).length,
+      synced: false
+    };
+    persistSession(completed);
+    return completed;
+  }
+
+  function startSession(mode: ExerciseMode, settings: PuzzleSettings | null): SessionRecord {
     const now = new Date().toISOString();
     const session: SessionRecord = {
       id: createId("session"),
@@ -266,120 +189,320 @@ export default function App() {
       started_at: now,
       ended_at: now,
       duration_s: 0,
-      xp_earned: 0,
-      streak_after: profile.streak,
-      focus_stage: selectedStage,
+      mode,
+      settings_payload: settings,
       status: "active",
       attempt_count: 0,
+      correct_count: 0,
       synced: false
     };
-    appendSession(session);
-    setAllSessions((previous) => [...previous, session]);
-    setActiveSession(session);
-    void loadNextItem(selectedStage);
+    persistSession(session);
+    return session;
   }
 
-  function finishSession(session: SessionRecord): void {
-    const endedAt = new Date().toISOString();
-    const sessionAttempts = getAttempts().filter(
-      (attempt) => attempt.session_id === session.id && attempt.user_id === session.user_id
-    );
-    const durationS = Math.max(1, Math.round((Date.parse(endedAt) - Date.parse(session.started_at)) / 1000));
-    const xpEarned = sessionAttempts.reduce((sum, attempt) => sum + xpForAttempt(attempt, profile.streak), 0);
-    const completedBase: SessionRecord = {
+  function ensureSession(mode: ExerciseMode, settings: PuzzleSettings | null): SessionRecord {
+    if (!activeSession) {
+      return startSession(mode, settings);
+    }
+    if (!sessionContextMatches(activeSession, mode, settings)) {
+      completeSession(activeSession);
+      return startSession(mode, settings);
+    }
+    return activeSession;
+  }
+
+  function updateSessionAfterAttempt(session: SessionRecord, correct: boolean): SessionRecord {
+    const updated: SessionRecord = {
       ...session,
-      ended_at: endedAt,
-      duration_s: durationS,
-      xp_earned: xpEarned,
-      status: "completed",
+      ended_at: new Date().toISOString(),
+      attempt_count: session.attempt_count + 1,
+      correct_count: session.correct_count + (correct ? 1 : 0),
       synced: false
     };
-    const nextProfile =
-      sessionAttempts.length > 0 ? updateProfileAfterSession(profile, completedBase, sessionAttempts, snapshots) : profile;
-    const completed = { ...completedBase, streak_after: nextProfile.streak };
-
-    setProfile(nextProfile);
-    saveProfile(nextProfile);
-    persistSession(completed);
-    setActiveSession(null);
-    setCurrentItem(null);
-    setSummary({
-      attempts: sessionAttempts,
-      correctCount: sessionAttempts.filter((attempt) => attempt.correct).length,
-      totalCount: sessionAttempts.length,
-      accuracy:
-        sessionAttempts.length === 0
-          ? 0
-          : sessionAttempts.filter((attempt) => attempt.correct).length / sessionAttempts.length,
-      xp: xpEarned,
-      durationS
-    });
+    persistSession(updated);
+    return updated;
   }
 
-  async function handleSubmit(answer: string, latencyMs: number): Promise<void> {
-    if (!activeSession || !currentItem) return;
-    const evaluation = evaluateAnswer(currentItem, answer);
+  async function syncNow(): Promise<void> {
+    if (syncingRef.current) {
+      return;
+    }
+    const freshAttempts = getAttempts().filter((attempt) => attempt.user_id === userId);
+    const freshSessions = getSessions().filter((session) => session.user_id === userId);
+
+    syncingRef.current = true;
+    setIsSyncing(true);
+    try {
+      const result = await syncLocalProgress({
+        userId,
+        displayName,
+        attempts: freshAttempts,
+        sessions: freshSessions
+      });
+      setSyncMessage(result.message);
+      if (!result.synced) {
+        return;
+      }
+      const hydratedSessions = hydrateSessionSettings(result.sessions, result.attempts);
+      replaceUserProgress(userId, result.attempts, hydratedSessions);
+      setAllAttempts(getAttempts());
+      setAllSessions(getSessions());
+    } finally {
+      syncingRef.current = false;
+      setIsSyncing(false);
+    }
+  }
+
+  async function loadNextItem(mode: ExerciseMode, settings: PuzzleSettings): Promise<void> {
+    setIsLoadingItem(true);
+    try {
+      if (mode === "square_color") {
+        setCurrentItem(createSquareColorItem());
+      } else {
+        const seed = await getNextPuzzle(settings);
+        setCurrentItem({
+          id: `puzzle-${seed.puzzleId}-${Date.now()}`,
+          mode: "puzzle_recall",
+          puzzleId: seed.puzzleId,
+          fen: seed.fen,
+          sideToMove: seed.sideToMove,
+          rating: seed.rating,
+          pieceCount: seed.pieceCount,
+          whitePieces: seed.whitePieces,
+          blackPieces: seed.blackPieces,
+          continuationSan: seed.continuationSan,
+          continuationText: seed.continuationText,
+          source: seed.source
+        });
+      }
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Failed to load puzzle.");
+      stopExerciseRun();
+    } finally {
+      setIsLoadingItem(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!isBootstrapped) {
+      return;
+    }
+    if (cleanupBootRef.current.userId === userId) {
+      return;
+    }
+    cleanupBootRef.current.userId = userId;
+
+    const stale = getSessions().filter(
+      (session) =>
+        session.user_id === userId &&
+        session.status === "active" &&
+        Date.parse(session.started_at) < cleanupBootRef.current.startedAtMs
+    );
+
+    if (stale.length === 0) {
+      return;
+    }
+
+    const storedAttempts = getAttempts();
+    const nextSessions = getSessions().map((session) => {
+      if (!stale.some((item) => item.id === session.id)) {
+        return session;
+      }
+      const endedAt = new Date().toISOString();
+      const sessionAttempts = storedAttempts.filter((attempt) => attempt.session_id === session.id && attempt.user_id === session.user_id);
+      return {
+        ...session,
+        ended_at: endedAt,
+        duration_s: Math.max(1, Math.round((Date.parse(endedAt) - Date.parse(session.started_at)) / 1000)),
+        status: "completed" as const,
+        attempt_count: sessionAttempts.length,
+        correct_count: sessionAttempts.filter((attempt) => attempt.correct).length,
+        synced: false
+      };
+    });
+
+    saveSessions(nextSessions);
+    setAllSessions(nextSessions);
+    setFeedback("Previous unfinished session was closed and saved.");
+  }, [isBootstrapped, userId]);
+
+  useEffect(() => {
+    if (!hasSupabaseConfig()) {
+      return;
+    }
+    const onOnline = () => {
+      if (userId !== GUEST_ID) {
+        void syncNow();
+      }
+    };
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [userId, displayName]);
+
+  useEffect(() => {
+    if (!isBootstrapped) {
+      return;
+    }
+    if (userId !== GUEST_ID) {
+      void syncNow();
+    }
+  }, [userId, isBootstrapped]);
+
+  function rotateSessionForContext(mode: ExerciseMode, settings: PuzzleSettings | null): void {
+    if (!activeSession) {
+      return;
+    }
+    if (sessionContextMatches(activeSession, mode, settings)) {
+      return;
+    }
+    completeSession(activeSession);
+  }
+
+  async function handleSquareSubmit(
+    answer: "black" | "white",
+    latencyMs: number,
+    evaluation: { correct: boolean; expected: string }
+  ): Promise<void> {
+    if (!isExerciseRunning || !currentItem || currentItem.mode !== "square_color") {
+      return;
+    }
+
+    const session = ensureSession("square_color", null);
+    const now = new Date().toISOString();
     const attempt: AttemptRecord = {
       id: createId("attempt"),
-      session_id: activeSession.id,
+      session_id: session.id,
       user_id: userId,
       item_id: currentItem.id,
-      stage: currentItem.stage,
-      prompt_payload: currentItem.prompt as Record<string, unknown>,
+      mode: "square_color",
+      prompt_payload: { square: currentItem.square },
       answer_payload: { answer },
       expected_answer: evaluation.expected,
       correct: evaluation.correct,
       latency_ms: latencyMs,
-      difficulty: currentItem.difficulty,
-      confidence: 3,
-      created_at: new Date().toISOString(),
+      created_at: now,
+      settings_payload: null,
       synced: false
     };
 
     appendAttempt(attempt);
     setAllAttempts((previous) => [...previous, attempt]);
+    updateSessionAfterAttempt(session, evaluation.correct);
+    setFeedback(evaluation.correct ? "Correct" : `Incorrect. Expected ${evaluation.expected}`);
 
-    const stageAttempts = getAttempts()
-      .filter((row) => row.user_id === userId && row.stage === attempt.stage)
-      .slice(-25);
-    const previousSnapshot = snapshots.find((snapshot) => snapshot.stage === attempt.stage);
-    const nextSnapshot = updateStageSnapshot(attempt.stage, userId, previousSnapshot, stageAttempts);
-    upsertSnapshot(nextSnapshot);
-    setAllSnapshots((previous) => {
-      const index = previous.findIndex(
-        (snapshot) => snapshot.stage === nextSnapshot.stage && snapshot.user_id === userId
-      );
-      if (index < 0) return [...previous, nextSnapshot];
-      const copy = [...previous];
-      copy[index] = nextSnapshot;
-      return copy;
-    });
+    await loadNextItem("square_color", puzzleSettings);
+    if (userId !== GUEST_ID && navigator.onLine) {
+      void syncNow();
+    }
+  }
 
-    const updatedSession: SessionRecord = {
-      ...activeSession,
-      attempt_count: activeSession.attempt_count + 1,
+  async function handlePuzzleSubmit(correct: boolean, latencyMs: number): Promise<void> {
+    if (!isExerciseRunning || !currentItem || currentItem.mode !== "puzzle_recall") {
+      return;
+    }
+
+    const settings = settingsForMode("puzzle_recall", puzzleSettings);
+    const session = ensureSession("puzzle_recall", settings);
+    const now = new Date().toISOString();
+    const attempt: AttemptRecord = {
+      id: createId("attempt"),
+      session_id: session.id,
+      user_id: userId,
+      item_id: currentItem.id,
+      mode: "puzzle_recall",
+      prompt_payload: {
+        puzzleId: currentItem.puzzleId,
+        fen: currentItem.fen,
+        rating: currentItem.rating,
+        sideToMove: currentItem.sideToMove,
+        pieceCount: currentItem.pieceCount,
+        source: currentItem.source ?? "unknown",
+        settings
+      },
+      answer_payload: { selfGrade: correct ? "right" : "wrong" },
+      expected_answer: currentItem.continuationText,
+      correct,
+      latency_ms: latencyMs,
+      created_at: now,
+      settings_payload: settings,
       synced: false
     };
-    persistSession(updatedSession);
 
-    const gained = xpForAttempt(attempt, profile.streak);
-    setFeedback(evaluation.correct ? `Correct (+${gained} XP)` : `Incorrect. Expected ${evaluation.expected}`);
-    await loadNextItem(updatedSession.focus_stage);
+    appendAttempt(attempt);
+    setAllAttempts((previous) => [...previous, attempt]);
+    updateSessionAfterAttempt(session, correct);
+    setFeedback(correct ? "Marked as correct." : "Marked as incorrect.");
+
+    await loadNextItem("puzzle_recall", puzzleSettings);
+    if (userId !== GUEST_ID && navigator.onLine) {
+      void syncNow();
+    }
+  }
+
+  function endSession(): void {
+    if (!activeSession) {
+      return;
+    }
+    completeSession(activeSession);
+    stopExerciseRun();
+    setFeedback("Session ended.");
+    if (userId !== GUEST_ID && navigator.onLine) {
+      void syncNow();
+    }
+  }
+
+  async function startExercise(): Promise<void> {
+    const settings = settingsForMode(selectedMode, puzzleSettings);
+    ensureSession(selectedMode, settings);
+    setFeedback("");
+    setIsExerciseRunning(true);
+    await loadNextItem(selectedMode, puzzleSettings);
+  }
+
+  function handleModeChange(nextMode: ExerciseMode): void {
+    setSelectedMode(nextMode);
+    setFeedback("");
+    const nextSettings = settingsForMode(nextMode, puzzleSettings);
+    rotateSessionForContext(nextMode, nextSettings);
+    stopExerciseRun();
+  }
+
+  function handleMaxPiecesChange(value: number): void {
+    const next = {
+      ...puzzleSettings,
+      maxPieces: Math.min(7, Math.max(2, value))
+    };
+    setPuzzleSettings(next);
+    if (selectedMode === "puzzle_recall") {
+      rotateSessionForContext("puzzle_recall", next);
+      stopExerciseRun();
+    }
+  }
+
+  function handleTargetRatingChange(value: number): void {
+    const rounded = Math.round(value / 50) * 50;
+    const next = {
+      ...puzzleSettings,
+      targetRating: Math.min(2800, Math.max(600, rounded))
+    };
+    setPuzzleSettings(next);
+    if (selectedMode === "puzzle_recall") {
+      rotateSessionForContext("puzzle_recall", next);
+      stopExerciseRun();
+    }
   }
 
   function resetProgress(): void {
-    const confirmReset = window.confirm("Reset all local progress, sessions, profile data, and cached puzzles?");
-    if (!confirmReset) return;
+    const confirmReset = window.confirm("Reset all local progress and cached puzzles?");
+    if (!confirmReset) {
+      return;
+    }
 
     resetAllBlindfoldData();
-    const freshProfile = getProfile(userId, displayName);
     setAllAttempts([]);
     setAllSessions([]);
-    setAllSnapshots([]);
-    setProfile(freshProfile);
     setActiveSession(null);
-    setCurrentItem(null);
-    setSummary(null);
+    stopExerciseRun();
     setFeedback("All local progress has been reset.");
     setSyncMessage("Local data reset.");
   }
@@ -395,7 +518,7 @@ export default function App() {
       <header className="topbar">
         <div>
           <h1>Blindfold Chess Trainer</h1>
-          <p className="muted">Simple focused practice: square color, mate in 1, mate in 2</p>
+          <p className="muted">Two drills only: Square Color and Puzzle Recall.</p>
         </div>
         <div className="top-actions">
           <span className="pill">{signedIn ? `Signed in as ${displayName}` : "Guest mode"}</span>
@@ -414,72 +537,106 @@ export default function App() {
       <main className="main-grid">
         <section className="panel">
           <h2>Training</h2>
-          <p className="muted">Choose one category and train continuously. Progress saves after every answer.</p>
+          <p className="muted">
+            Click Start to load an exercise. Changing mode or puzzle settings stops the current run and requires Start again.
+          </p>
+
           <div className="controls">
             <label className="field">
-              <span>Category</span>
-              <select
-                value={selectedStage}
-                onChange={(event) => setSelectedStage(event.target.value as ExerciseStage)}
-                disabled={Boolean(activeSession)}
-              >
-                {CATEGORY_OPTIONS.map((stage) => (
-                  <option key={stage} value={stage}>
-                    {stageDisplayName(stage)}
-                  </option>
-                ))}
+              <span>Mode</span>
+              <select value={selectedMode} onChange={(event) => handleModeChange(event.target.value as ExerciseMode)}>
+                <option value="square_color">{modeDisplayName("square_color")}</option>
+                <option value="puzzle_recall">{modeDisplayName("puzzle_recall")}</option>
               </select>
             </label>
-            <button type="button" className="btn primary" onClick={startSession} disabled={Boolean(activeSession)}>
-              Start Session
-            </button>
+
+            {selectedMode === "puzzle_recall" ? (
+              <>
+                <label className="field">
+                  <span>Max Pieces (incl. kings)</span>
+                  <input
+                    type="number"
+                    min={2}
+                    max={7}
+                    value={puzzleSettings.maxPieces}
+                    onChange={(event) => handleMaxPiecesChange(Number(event.target.value))}
+                  />
+                </label>
+                <label className="field">
+                  <span>Target Rating</span>
+                  <input
+                    type="number"
+                    min={600}
+                    max={2800}
+                    step={50}
+                    value={puzzleSettings.targetRating}
+                    onChange={(event) => handleTargetRatingChange(Number(event.target.value))}
+                  />
+                </label>
+              </>
+            ) : null}
+
             <button
               type="button"
-              className="btn secondary"
-              onClick={() => (activeSession ? finishSession(activeSession) : undefined)}
-              disabled={!activeSession}
+              className="btn primary"
+              onClick={() => {
+                void startExercise();
+              }}
+              disabled={isExerciseRunning || isLoadingItem}
             >
+              Start
+            </button>
+            <button type="button" className="btn secondary" onClick={endSession} disabled={!activeSession}>
               End Session
             </button>
             <button
               type="button"
               className="btn secondary"
-              onClick={() => syncMutation.mutate()}
-              disabled={syncMutation.isPending}
+              onClick={() => {
+                void syncNow();
+              }}
+              disabled={isSyncing}
             >
-              {syncMutation.isPending ? "Syncing..." : "Sync Now"}
+              {isSyncing ? "Syncing..." : "Sync Now"}
             </button>
             <button type="button" className="btn danger" onClick={resetProgress}>
-              Reset All Data
+              Reset Local Data
             </button>
           </div>
+
           <p className="muted">{syncMessage}</p>
+          {activeSession ? (
+            <p className="muted">
+              Active session: {modeDisplayName(activeSession.mode)}
+              {activeSession.settings_payload
+                ? ` | ${activeSession.settings_payload.maxPieces} pieces @ ${activeSession.settings_payload.targetRating}`
+                : ""}
+            </p>
+          ) : (
+            <p className="muted">No active session right now.</p>
+          )}
           {feedback ? <p className="feedback">{feedback}</p> : null}
 
-          {currentItem && activeSession ? (
+          {isLoadingItem && isExerciseRunning ? <p className="muted">Loading next exercise...</p> : null}
+
+          {isExerciseRunning && currentItem ? (
             <ExerciseCard
               item={currentItem}
-              attemptsInSession={activeSession.attempt_count}
+              attemptsInSession={activeSession?.attempt_count ?? 0}
               disabled={isLoadingItem}
-              onSubmit={(answer, latencyMs) => {
-                void handleSubmit(answer, latencyMs);
+              onSquareSubmit={(answer, latencyMs, evaluation) => {
+                void handleSquareSubmit(answer, latencyMs, evaluation);
+              }}
+              onPuzzleSubmit={(correct, latencyMs) => {
+                void handlePuzzleSubmit(correct, latencyMs);
               }}
             />
-          ) : summary ? (
-            <article className="session-summary">
-              <h3>Session Complete</h3>
-              <p>
-                Accuracy: {Math.round(summary.accuracy * 100)}% ({summary.correctCount}/{summary.totalCount})
-              </p>
-              <p>XP earned: {summary.xp}</p>
-              <p>Duration: {Math.round(summary.durationS / 60)} min</p>
-            </article>
           ) : (
-            <p className="muted">No active session. Start one to train.</p>
+            <p className="muted">Press Start to begin.</p>
           )}
         </section>
 
-        <Dashboard profile={profile} attempts={attempts} sessions={sessions} />
+        <Dashboard attempts={attempts} sessions={sessions} />
       </main>
     </div>
   );

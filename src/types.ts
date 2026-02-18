@@ -1,33 +1,49 @@
-export type ExerciseStage =
-  | "square_color"
-  | "mate_in_1"
-  | "mate_in_2";
+export type ExerciseMode = "square_color" | "puzzle_recall";
 
-export interface ExerciseItem<TPrompt = Record<string, unknown>, TSolution = string> {
-  id: string;
-  stage: ExerciseStage;
-  difficulty: number;
-  prompt: TPrompt;
-  solution: TSolution;
-  choices: string[];
-  tags: string[];
-  reviewOfId?: string;
+export interface PuzzleSettings {
+  maxPieces: number;
+  targetRating: number;
 }
+
+export type PuzzleSource = "local_db" | "tablebase_api";
+
+export interface SquareColorItem {
+  id: string;
+  mode: "square_color";
+  square: string;
+  expectedAnswer: "black" | "white";
+}
+
+export interface PuzzleRecallItem {
+  id: string;
+  mode: "puzzle_recall";
+  puzzleId: string;
+  fen: string;
+  sideToMove: "w" | "b";
+  rating: number;
+  pieceCount: number;
+  whitePieces: string[];
+  blackPieces: string[];
+  continuationSan: string[];
+  continuationText: string;
+  source?: PuzzleSource;
+}
+
+export type ExerciseItem = SquareColorItem | PuzzleRecallItem;
 
 export interface AttemptRecord {
   id: string;
   session_id: string;
   user_id: string;
   item_id: string;
-  stage: ExerciseStage;
+  mode: ExerciseMode;
   prompt_payload: Record<string, unknown>;
-  answer_payload: { answer: string };
+  answer_payload: Record<string, unknown>;
   expected_answer: string;
   correct: boolean;
   latency_ms: number;
-  difficulty: number;
-  confidence: 1 | 2 | 3 | 4 | 5;
   created_at: string;
+  settings_payload: PuzzleSettings | null;
   synced?: boolean;
 }
 
@@ -37,44 +53,17 @@ export interface SessionRecord {
   started_at: string;
   ended_at: string;
   duration_s: number;
-  xp_earned: number;
-  streak_after: number;
-  focus_stage: ExerciseStage;
+  mode: ExerciseMode;
+  settings_payload: PuzzleSettings | null;
   status: "active" | "completed";
   attempt_count: number;
+  correct_count: number;
   synced?: boolean;
 }
 
-export interface ProgressSnapshot {
-  user_id: string;
-  stage: ExerciseStage;
-  rating: number;
-  rolling_accuracy: number;
-  rolling_latency_ms: number;
-  updated_at: string;
-  synced?: boolean;
-}
-
-export interface UserProfile {
-  user_id: string;
-  display_name: string;
-  xp: number;
-  level: number;
-  streak: number;
-  last_session_date?: string;
-  badges: string[];
-}
-
-export interface SessionSummary {
-  attempts: AttemptRecord[];
-  correctCount: number;
-  totalCount: number;
-  accuracy: number;
-  xp: number;
-  durationS: number;
-}
-
-export interface ReviewItem {
-  due_at: string;
-  item: ExerciseItem;
+export interface PuzzleComboStat {
+  maxPieces: number;
+  targetRating: number;
+  attempts: number;
+  correctPercent: number;
 }

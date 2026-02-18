@@ -1,40 +1,79 @@
-import type { AttemptRecord, ExerciseStage } from "../types";
+import type { AttemptRecord, ExerciseMode, PuzzleComboStat, SessionRecord } from "../types";
 
-export interface CategoryStats {
-  stage: ExerciseStage;
+export interface ModeStats {
+  mode: ExerciseMode;
   attempts: number;
   accuracy: number;
   avgLatencyMs: number;
 }
 
-export const CATEGORY_ORDER: ExerciseStage[] = ["square_color", "mate_in_1", "mate_in_2"];
+const MODE_ORDER: ExerciseMode[] = ["square_color", "puzzle_recall"];
 
-export function summarizeCategoryStats(attempts: AttemptRecord[]): CategoryStats[] {
-  return CATEGORY_ORDER.map((stage) => {
-    const rows = attempts.filter((attempt) => attempt.stage === stage);
+export function summarizeModeStats(attempts: AttemptRecord[]): ModeStats[] {
+  return MODE_ORDER.map((mode) => {
+    const rows = attempts.filter((attempt) => attempt.mode === mode);
     if (rows.length === 0) {
-      return {
-        stage,
-        attempts: 0,
-        accuracy: 0,
-        avgLatencyMs: 0
-      };
+      return { mode, attempts: 0, accuracy: 0, avgLatencyMs: 0 };
     }
-    const correct = rows.filter((row) => row.correct).length;
+
+    const correctCount = rows.filter((row) => row.correct).length;
     const totalLatency = rows.reduce((sum, row) => sum + row.latency_ms, 0);
     return {
-      stage,
+      mode,
       attempts: rows.length,
-      accuracy: correct / rows.length,
+      accuracy: correctCount / rows.length,
       avgLatencyMs: Math.round(totalLatency / rows.length)
     };
   });
 }
 
-export function recentAccuracy(attempts: AttemptRecord[], stage: ExerciseStage, sample = 7): number {
-  const recent = attempts.filter((attempt) => attempt.stage === stage).slice(-sample);
-  if (recent.length === 0) {
-    return 0;
+export interface SessionSummaryRow {
+  session: SessionRecord;
+  accuracy: number;
+}
+
+export function summarizeSessions(sessions: SessionRecord[], attempts: AttemptRecord[]): SessionSummaryRow[] {
+  const attemptsBySession = new Map<string, AttemptRecord[]>();
+  for (const attempt of attempts) {
+    const rows = attemptsBySession.get(attempt.session_id) ?? [];
+    rows.push(attempt);
+    attemptsBySession.set(attempt.session_id, rows);
   }
-  return recent.filter((attempt) => attempt.correct).length / recent.length;
+
+  return sessions
+    .filter((session) => session.status === "completed")
+    .map((session) => {
+      const rows = attemptsBySession.get(session.id) ?? [];
+      const correct = rows.filter((row) => row.correct).length;
+      const accuracy = rows.length === 0 ? 0 : correct / rows.length;
+      return { session: { ...session, attempt_count: rows.length, correct_count: correct }, accuracy };
+    })
+    .sort((a, b) => Date.parse(b.session.ended_at) - Date.parse(a.session.ended_at));
+}
+
+export function puzzleComboStats(attempts: AttemptRecord[]): PuzzleComboStat[] {
+  const buckets = new Map<string, { attempts: number; correct: number; maxPieces: number; targetRating: number }>();
+
+  for (const attempt of attempts) {
+    if (attempt.mode !== "puzzle_recall" || !attempt.settings_payload) {
+      continue;
+    }
+    const { maxPieces, targetRating } = attempt.settings_payload;
+    const key = `${maxPieces}:${targetRating}`;
+    const bucket = buckets.get(key) ?? { attempts: 0, correct: 0, maxPieces, targetRating };
+    bucket.attempts += 1;
+    if (attempt.correct) {
+      bucket.correct += 1;
+    }
+    buckets.set(key, bucket);
+  }
+
+  return [...buckets.values()]
+    .map((bucket) => ({
+      maxPieces: bucket.maxPieces,
+      targetRating: bucket.targetRating,
+      attempts: bucket.attempts,
+      correctPercent: bucket.attempts === 0 ? 0 : (bucket.correct / bucket.attempts) * 100
+    }))
+    .sort((a, b) => b.attempts - a.attempts || a.maxPieces - b.maxPieces || a.targetRating - b.targetRating);
 }

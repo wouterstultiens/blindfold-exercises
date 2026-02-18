@@ -8,11 +8,12 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "puzzles:build": "node scripts/build-puzzle-db.mjs",
+    "puzzles:build:blindfold": "node scripts/build-puzzle-db.mjs --reset --max-pieces 7 --max-plies 4 --sources lichess,tablebase --tablebase-budget 250"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.2",
-    "@tanstack/react-query": "^5.66.0",
     "chess.js": "^1.4.0",
     "react": "^18.3.1",
     "react-chessboard": "^4.7.3",
