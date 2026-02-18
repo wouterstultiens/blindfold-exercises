@@ -4,19 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="cee287c5-f381-4037-8505-a57fadbaf68d" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/CONTEXT.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/CONTEXT.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/JOURNAL.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/JOURNAL.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/App.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/BoardView.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/BoardView.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/ExerciseCard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/ExerciseCard.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/ProgressView.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/ProgressView.tsx" afterDir="false" />
-    </list>
+    <list default="true" id="cee287c5-f381-4037-8505-a57fadbaf68d" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />

@@ -90,6 +90,17 @@ function formatPuzzleSettings(settings: PuzzleSettings | null): string {
   return `${settings.pieceCount} pieces @ ${settings.ratingBucket}`;
 }
 
+function currentStreak(attempts: AttemptRecord[]): number {
+  let streak = 0;
+  for (let index = attempts.length - 1; index >= 0; index -= 1) {
+    if (!attempts[index].correct) {
+      break;
+    }
+    streak += 1;
+  }
+  return streak;
+}
+
 function hasCombo(catalog: PuzzleCatalog, pieceCount: number, ratingBucket: number): boolean {
   const key = `p${pieceCount}-r${ratingBucket}`;
   return Number(catalog.countsByCombo[key] ?? 0) > 0;
@@ -137,6 +148,61 @@ async function exitBrowserFullscreen(): Promise<void> {
   } catch {
     // Ignore: exit failures should not block UI.
   }
+}
+
+interface SessionMomentumProps {
+  modeLabel: string;
+  settingsLabel: string | null;
+  attempts: number;
+  accuracyPercent: number;
+  streak: number;
+  avgLatencyMs: number;
+  focused?: boolean;
+}
+
+function SessionMomentum({
+  modeLabel,
+  settingsLabel,
+  attempts,
+  accuracyPercent,
+  streak,
+  avgLatencyMs,
+  focused = false
+}: SessionMomentumProps) {
+  const momentumProgress = Math.min(100, Math.max(8, Math.round((attempts / 24) * 100)));
+
+  return (
+    <aside className={`session-momentum${focused ? " focused" : ""}`} data-testid="session-momentum">
+      <div className="session-momentum-head">
+        <p className="kicker">Run Momentum</p>
+        <p className="muted">
+          {modeLabel}
+          {settingsLabel ? ` | ${settingsLabel}` : ""}
+        </p>
+      </div>
+      <div className="momentum-metrics">
+        <div className="momentum-metric">
+          <span className="label">Attempts</span>
+          <span className="value">{attempts}</span>
+        </div>
+        <div className="momentum-metric">
+          <span className="label">Accuracy</span>
+          <span className="value">{attempts > 0 ? `${accuracyPercent}%` : "-"}</span>
+        </div>
+        <div className="momentum-metric streak">
+          <span className="label">Streak</span>
+          <span className="value">{streak}</span>
+        </div>
+        <div className="momentum-metric">
+          <span className="label">Avg Time</span>
+          <span className="value">{attempts > 0 ? `${(avgLatencyMs / 1000).toFixed(1)}s` : "-"}</span>
+        </div>
+      </div>
+      <div className="momentum-track" aria-hidden="true">
+        <span style={{ width: `${momentumProgress}%` }} />
+      </div>
+    </aside>
+  );
 }
 
 export default function App() {
@@ -243,6 +309,22 @@ export default function App() {
 
   const attempts = useMemo(() => allAttempts.filter((attempt) => attempt.user_id === userId), [allAttempts, userId]);
   const sessions = useMemo(() => allSessions.filter((session) => session.user_id === userId), [allSessions, userId]);
+  const activeSessionAttempts = useMemo(() => {
+    if (!activeSession) {
+      return [];
+    }
+    return attempts
+      .filter((attempt) => attempt.session_id === activeSession.id)
+      .sort((left, right) => Date.parse(left.created_at) - Date.parse(right.created_at));
+  }, [attempts, activeSession]);
+  const activeCorrectCount = activeSessionAttempts.reduce((sum, attempt) => sum + (attempt.correct ? 1 : 0), 0);
+  const activeAccuracyPercent =
+    activeSessionAttempts.length > 0 ? Math.round((activeCorrectCount / activeSessionAttempts.length) * 100) : 0;
+  const activeAvgLatencyMs =
+    activeSessionAttempts.length > 0
+      ? Math.round(activeSessionAttempts.reduce((sum, attempt) => sum + attempt.latency_ms, 0) / activeSessionAttempts.length)
+      : 0;
+  const activeStreak = currentStreak(activeSessionAttempts);
   const availablePieceCounts = useMemo(
     () =>
       puzzleCatalog.pieceCounts.filter((pieceCount) =>
@@ -804,6 +886,17 @@ export default function App() {
               </button>
             </div>
 
+            {activeSession && !isFocusMode ? (
+              <SessionMomentum
+                modeLabel={modeDisplayName(activeSession.mode)}
+                settingsLabel={activeSession.settings_payload ? formatPuzzleSettings(activeSession.settings_payload) : null}
+                attempts={activeSessionAttempts.length}
+                accuracyPercent={activeAccuracyPercent}
+                streak={activeStreak}
+                avgLatencyMs={activeAvgLatencyMs}
+              />
+            ) : null}
+
             <p className="muted">{syncMessage}</p>
             {activeSession ? (
               <p className="muted">
@@ -858,18 +951,31 @@ export default function App() {
             {isLoadingItem || !currentItem ? (
               <p className="muted">Loading next exercise...</p>
             ) : (
-              <ExerciseCard
-                item={currentItem}
-                attemptsInSession={activeSession?.attempt_count ?? 0}
-                disabled={isLoadingItem || isDeleting}
-                focused
-                onSquareSubmit={(answer, latencyMs, evaluation) => {
-                  void handleSquareSubmit(answer, latencyMs, evaluation);
-                }}
-                onPuzzleSubmit={(correct, latencyMs) => {
-                  void handlePuzzleSubmit(correct, latencyMs);
-                }}
-              />
+              <>
+                {activeSession ? (
+                  <SessionMomentum
+                    modeLabel={modeDisplayName(activeSession.mode)}
+                    settingsLabel={activeSession.settings_payload ? formatPuzzleSettings(activeSession.settings_payload) : null}
+                    attempts={activeSessionAttempts.length}
+                    accuracyPercent={activeAccuracyPercent}
+                    streak={activeStreak}
+                    avgLatencyMs={activeAvgLatencyMs}
+                    focused
+                  />
+                ) : null}
+                <ExerciseCard
+                  item={currentItem}
+                  attemptsInSession={activeSession?.attempt_count ?? 0}
+                  disabled={isLoadingItem || isDeleting}
+                  focused
+                  onSquareSubmit={(answer, latencyMs, evaluation) => {
+                    void handleSquareSubmit(answer, latencyMs, evaluation);
+                  }}
+                  onPuzzleSubmit={(correct, latencyMs) => {
+                    void handlePuzzleSubmit(correct, latencyMs);
+                  }}
+                />
+              </>
             )}
           </div>
         </section>

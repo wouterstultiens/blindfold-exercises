@@ -11,6 +11,7 @@
   --line: rgba(151, 173, 206, 0.28);
   --accent: #34d399;
   --accent-strong: #10b981;
+  --warn: #fbbf24;
   --danger: #fb7185;
   --dur-fast: 120ms;
   --dur-med: 220ms;
@@ -217,6 +218,76 @@ p {
 .feedback {
   font-weight: 700;
   color: #d1fae5;
+}
+
+.session-momentum {
+  border: 1px solid rgba(103, 133, 177, 0.5);
+  border-radius: 14px;
+  padding: 0.72rem 0.78rem;
+  display: grid;
+  gap: 0.55rem;
+  background: linear-gradient(125deg, rgba(14, 32, 54, 0.9) 0%, rgba(8, 36, 46, 0.86) 100%);
+  box-shadow: 0 10px 26px rgba(3, 8, 16, 0.42);
+}
+
+.session-momentum.focused {
+  background: linear-gradient(132deg, rgba(17, 37, 62, 0.95) 0%, rgba(9, 30, 40, 0.94) 100%);
+}
+
+.session-momentum-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.momentum-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.momentum-metric {
+  border: 1px solid rgba(110, 141, 190, 0.35);
+  border-radius: 10px;
+  padding: 0.42rem 0.5rem;
+  display: grid;
+  gap: 0.12rem;
+  background: rgba(10, 24, 40, 0.62);
+}
+
+.momentum-metric .label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.momentum-metric .value {
+  font-size: 1.02rem;
+  font-weight: 700;
+}
+
+.momentum-metric.streak .value {
+  color: var(--warn);
+}
+
+.momentum-track {
+  height: 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(105, 130, 169, 0.4);
+  background: rgba(8, 19, 32, 0.72);
+  overflow: hidden;
+}
+
+.momentum-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #22c55e 0%, #34d399 45%, #2dd4bf 100%);
+  transition: width var(--dur-med) var(--ease);
 }
 
 .exercise-card {
@@ -440,7 +511,10 @@ p {
   position: fixed;
   inset: 0;
   z-index: 80;
-  background: linear-gradient(180deg, rgba(5, 10, 18, 0.96) 0%, rgba(8, 14, 24, 0.97) 100%);
+  background:
+    radial-gradient(980px 620px at 50% -12%, rgba(39, 106, 194, 0.16), transparent 54%),
+    linear-gradient(180deg, rgba(3, 8, 15, 0.996) 0%, rgba(5, 11, 20, 0.996) 100%);
+  backdrop-filter: blur(8px);
   height: 100vh;
   height: 100dvh;
   overflow-y: auto;
@@ -528,6 +602,22 @@ p {
   overflow: hidden;
 }
 
+.table-scroll {
+  overflow-x: auto;
+}
+
+.table-row-3 {
+  min-width: 420px;
+}
+
+.table-row-4 {
+  min-width: 460px;
+}
+
+.table-row-5 {
+  min-width: 620px;
+}
+
 .row {
   display: grid;
   grid-template-columns: 1.2fr 0.6fr 0.6fr;
@@ -538,16 +628,27 @@ p {
 }
 
 .row.row-4 {
-  grid-template-columns: 1.45fr 0.72fr 0.7fr 1fr;
+  grid-template-columns: minmax(120px, 1.25fr) minmax(72px, 0.62fr) minmax(72px, 0.62fr) minmax(78px, 0.72fr);
 }
 
 .row.row-5 {
-  grid-template-columns: 1.35fr 0.8fr 1.2fr 0.6fr 0.65fr;
+  grid-template-columns: minmax(130px, 1.3fr) minmax(78px, 0.72fr) minmax(106px, 1fr) minmax(66px, 0.56fr) minmax(70px, 0.6fr);
+}
+
+.row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .row.header {
   font-weight: 700;
   background: rgba(51, 65, 85, 0.72);
+}
+
+.row:not(.header):nth-child(even) {
+  background: rgba(23, 34, 54, 0.42);
 }
 
 .row:last-child {
@@ -590,6 +691,26 @@ p {
     grid-template-columns: 1fr;
   }
 
+  .controls {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  .controls .field {
+    grid-column: 1 / -1;
+  }
+
+  .controls .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .momentum-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .focus-overlay {
     padding: calc(0.55rem + env(safe-area-inset-top)) 0.55rem calc(0.7rem + env(safe-area-inset-bottom));
   }
@@ -615,9 +736,15 @@ p {
     gap: 0.5rem;
   }
 
+  .choices.focus-actions {
+    position: static;
+    background: transparent;
+    padding-top: 0;
+  }
+
   .row.row-4,
   .row.row-5 {
-    grid-template-columns: 1fr;
+    font-size: 0.86rem;
   }
 }
 
