@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createSquareColorItem, modeDisplayName } from "./engine/exercises";
 import { Dashboard } from "./components/Dashboard";
 import { ExerciseCard } from "./components/ExerciseCard";
+import { createSquareColorItem, modeDisplayName } from "./engine/exercises";
 import {
   appendAttempt,
   getAttempts,
@@ -11,14 +11,27 @@ import {
   saveSessions,
   upsertSession
 } from "./services/localDb";
-import { getNextPuzzle } from "./services/puzzleProvider";
+import { getNextPuzzle, getPuzzleCatalog, type PuzzleCatalog } from "./services/puzzleProvider";
 import { getSupabaseClient, hasSupabaseConfig, signInWithGitHub, signOut } from "./services/supabase";
 import { syncLocalProgress } from "./services/sync";
 import type { AttemptRecord, ExerciseItem, ExerciseMode, PuzzleSettings, SessionRecord } from "./types";
 
 const GUEST_ID = "guest-local";
+const FALLBACK_CATALOG: PuzzleCatalog = {
+  pieceCounts: [3, 4, 5, 6, 7, 8],
+  ratingBuckets: [1200],
+  countsByCombo: {
+    "p3-r1200": 1,
+    "p4-r1200": 1,
+    "p5-r1200": 1,
+    "p6-r1200": 1,
+    "p7-r1200": 1,
+    "p8-r1200": 1
+  }
+};
 const DEFAULT_PUZZLE_SETTINGS: PuzzleSettings = {
-  maxPieces: 5
+  pieceCount: 5,
+  ratingBucket: 1200
 };
 
 function createId(prefix: string): string {
@@ -42,7 +55,7 @@ function sameSettings(a: PuzzleSettings | null, b: PuzzleSettings | null): boole
   if (!a || !b) {
     return false;
   }
-  return a.maxPieces === b.maxPieces;
+  return a.pieceCount === b.pieceCount && a.ratingBucket === b.ratingBucket;
 }
 
 function sessionContextMatches(session: SessionRecord, mode: ExerciseMode, settings: PuzzleSettings | null): boolean {
@@ -69,10 +82,44 @@ function hydrateSessionSettings(sessions: SessionRecord[], attempts: AttemptReco
   });
 }
 
+function formatPuzzleSettings(settings: PuzzleSettings | null): string {
+  if (!settings) {
+    return "";
+  }
+  return `${settings.pieceCount} pieces @ ${settings.ratingBucket}`;
+}
+
+function hasCombo(catalog: PuzzleCatalog, pieceCount: number, ratingBucket: number): boolean {
+  const key = `p${pieceCount}-r${ratingBucket}`;
+  return Number(catalog.countsByCombo[key] ?? 0) > 0;
+}
+
+function normalizeSettings(settings: PuzzleSettings, catalog: PuzzleCatalog): PuzzleSettings {
+  const sortedPieces = [...catalog.pieceCounts].sort((a, b) => a - b);
+  const sortedBuckets = [...catalog.ratingBuckets].sort((a, b) => a - b);
+  const pieceCount = sortedPieces.find((piece) =>
+    sortedBuckets.some((bucket) => hasCombo(catalog, piece, bucket))
+  ) ?? 3;
+
+  const preferredPiece = sortedPieces.includes(settings.pieceCount) ? settings.pieceCount : pieceCount;
+  const ratingsForPiece = sortedBuckets.filter((bucket) => hasCombo(catalog, preferredPiece, bucket));
+  const normalizedPiece = ratingsForPiece.length > 0 ? preferredPiece : pieceCount;
+  const normalizedRatings = sortedBuckets.filter((bucket) => hasCombo(catalog, normalizedPiece, bucket));
+  const ratingBucket = normalizedRatings.includes(settings.ratingBucket)
+    ? settings.ratingBucket
+    : normalizedRatings[Math.floor(normalizedRatings.length / 2)] ?? 1200;
+
+  return {
+    pieceCount: normalizedPiece,
+    ratingBucket
+  };
+}
+
 export default function App() {
   const [userId, setUserId] = useState<string>(GUEST_ID);
   const [displayName, setDisplayName] = useState<string>("Guest");
   const [selectedMode, setSelectedMode] = useState<ExerciseMode>("square_color");
+  const [puzzleCatalog, setPuzzleCatalog] = useState<PuzzleCatalog>(FALLBACK_CATALOG);
   const [puzzleSettings, setPuzzleSettings] = useState<PuzzleSettings>(DEFAULT_PUZZLE_SETTINGS);
   const [allAttempts, setAllAttempts] = useState<AttemptRecord[]>([]);
   const [allSessions, setAllSessions] = useState<SessionRecord[]>([]);
@@ -83,6 +130,7 @@ export default function App() {
   const [syncMessage, setSyncMessage] = useState<string>("Local mode active.");
   const [isLoadingItem, setIsLoadingItem] = useState<boolean>(false);
   const [isBootstrapped, setIsBootstrapped] = useState<boolean>(false);
+  const [isCatalogLoading, setIsCatalogLoading] = useState<boolean>(true);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const cleanupBootRef = useRef<{ userId: string | null; startedAtMs: number }>({
     userId: null,
@@ -93,6 +141,36 @@ export default function App() {
   useEffect(() => {
     setAllAttempts(getAttempts());
     setAllSessions(getSessions());
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    setIsCatalogLoading(true);
+    getPuzzleCatalog()
+      .then((catalog) => {
+        if (!mounted) {
+          return;
+        }
+        setPuzzleCatalog(catalog);
+        setPuzzleSettings((previous) => normalizeSettings(previous, catalog));
+      })
+      .catch((error) => {
+        if (!mounted) {
+          return;
+        }
+        setPuzzleCatalog(FALLBACK_CATALOG);
+        setPuzzleSettings((previous) => normalizeSettings(previous, FALLBACK_CATALOG));
+        setFeedback(error instanceof Error ? error.message : "Unable to load puzzle catalog.");
+      })
+      .finally(() => {
+        if (mounted) {
+          setIsCatalogLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -137,6 +215,20 @@ export default function App() {
 
   const attempts = useMemo(() => allAttempts.filter((attempt) => attempt.user_id === userId), [allAttempts, userId]);
   const sessions = useMemo(() => allSessions.filter((session) => session.user_id === userId), [allSessions, userId]);
+  const availablePieceCounts = useMemo(
+    () =>
+      puzzleCatalog.pieceCounts.filter((pieceCount) =>
+        puzzleCatalog.ratingBuckets.some((ratingBucket) => hasCombo(puzzleCatalog, pieceCount, ratingBucket))
+      ),
+    [puzzleCatalog]
+  );
+  const availableRatingBuckets = useMemo(
+    () =>
+      puzzleCatalog.ratingBuckets.filter((ratingBucket) =>
+        hasCombo(puzzleCatalog, puzzleSettings.pieceCount, ratingBucket)
+      ),
+    [puzzleCatalog, puzzleSettings.pieceCount]
+  );
 
   useEffect(() => {
     if (!isBootstrapped) {
@@ -265,8 +357,8 @@ export default function App() {
           puzzleId: seed.puzzleId,
           fen: seed.fen,
           sideToMove: seed.sideToMove,
-          rating: seed.rating,
           pieceCount: seed.pieceCount,
+          ratingBucket: seed.ratingBucket,
           whitePieces: seed.whitePieces,
           blackPieces: seed.blackPieces,
           continuationSan: seed.continuationSan,
@@ -412,9 +504,9 @@ export default function App() {
       prompt_payload: {
         puzzleId: currentItem.puzzleId,
         fen: currentItem.fen,
-        rating: currentItem.rating,
         sideToMove: currentItem.sideToMove,
         pieceCount: currentItem.pieceCount,
+        ratingBucket: currentItem.ratingBucket,
         source: currentItem.source ?? "unknown",
         settings
       },
@@ -466,11 +558,24 @@ export default function App() {
     stopExerciseRun();
   }
 
-  function handleMaxPiecesChange(value: number): void {
-    const next = {
-      ...puzzleSettings,
-      maxPieces: Math.min(5, Math.max(3, value))
-    };
+  function handlePieceCountChange(value: number): void {
+    const ratingsForPiece = puzzleCatalog.ratingBuckets.filter((ratingBucket) => hasCombo(puzzleCatalog, value, ratingBucket));
+    const next = normalizeSettings(
+      {
+        pieceCount: value,
+        ratingBucket: ratingsForPiece.includes(puzzleSettings.ratingBucket) ? puzzleSettings.ratingBucket : ratingsForPiece[0] ?? 1200
+      },
+      puzzleCatalog
+    );
+    setPuzzleSettings(next);
+    if (selectedMode === "puzzle_recall") {
+      rotateSessionForContext("puzzle_recall", next);
+      stopExerciseRun();
+    }
+  }
+
+  function handleRatingBucketChange(value: number): void {
+    const next = normalizeSettings({ ...puzzleSettings, ratingBucket: value }, puzzleCatalog);
     setPuzzleSettings(next);
     if (selectedMode === "puzzle_recall") {
       rotateSessionForContext("puzzle_recall", next);
@@ -504,7 +609,7 @@ export default function App() {
       <header className="topbar">
         <div>
           <h1>Blindfold Chess Trainer</h1>
-          <p className="muted">Two drills only: Square Color and Puzzle Recall.</p>
+          <p className="muted">Minimal distraction drills: Square Color and static Lichess Puzzle Recall.</p>
         </div>
         <div className="top-actions">
           <span className="pill">{signedIn ? `Signed in as ${displayName}` : "Guest mode"}</span>
@@ -521,10 +626,10 @@ export default function App() {
       </header>
 
       <main className="main-grid">
-        <section className="panel">
+        <section className="panel panel-training">
           <h2>Training</h2>
           <p className="muted">
-            Click Start to load an exercise. Changing mode or puzzle settings stops the current run and requires Start again.
+            Click Start to begin. Changing mode, piece count, or rating bucket ends the current run and requires Start again.
           </p>
 
           <div className="controls">
@@ -539,14 +644,33 @@ export default function App() {
             {selectedMode === "puzzle_recall" ? (
               <>
                 <label className="field">
-                  <span>Max Pieces (incl. kings)</span>
-                  <input
-                    type="number"
-                    min={2}
-                    max={7}
-                    value={puzzleSettings.maxPieces}
-                    onChange={(event) => handleMaxPiecesChange(Number(event.target.value))}
-                  />
+                  <span>Piece Count</span>
+                  <select
+                    value={puzzleSettings.pieceCount}
+                    onChange={(event) => handlePieceCountChange(Number(event.target.value))}
+                    disabled={isCatalogLoading}
+                  >
+                    {availablePieceCounts.map((pieceCount) => (
+                      <option key={pieceCount} value={pieceCount}>
+                        {pieceCount}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="field">
+                  <span>Rating Bucket</span>
+                  <select
+                    value={puzzleSettings.ratingBucket}
+                    onChange={(event) => handleRatingBucketChange(Number(event.target.value))}
+                    disabled={isCatalogLoading}
+                  >
+                    {availableRatingBuckets.map((bucket) => (
+                      <option key={bucket} value={bucket}>
+                        {bucket}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </>
             ) : null}
@@ -557,7 +681,11 @@ export default function App() {
               onClick={() => {
                 void startExercise();
               }}
-              disabled={isExerciseRunning || isLoadingItem}
+              disabled={
+                isExerciseRunning ||
+                isLoadingItem ||
+                (selectedMode === "puzzle_recall" && (isCatalogLoading || availablePieceCounts.length === 0 || availableRatingBuckets.length === 0))
+              }
             >
               Start
             </button>
@@ -583,13 +711,14 @@ export default function App() {
           {activeSession ? (
             <p className="muted">
               Active session: {modeDisplayName(activeSession.mode)}
-              {activeSession.settings_payload ? ` | ${activeSession.settings_payload.maxPieces} pieces` : ""}
+              {activeSession.settings_payload ? ` | ${formatPuzzleSettings(activeSession.settings_payload)}` : ""}
             </p>
           ) : (
             <p className="muted">No active session right now.</p>
           )}
           {feedback ? <p className="feedback">{feedback}</p> : null}
 
+          {isCatalogLoading && selectedMode === "puzzle_recall" ? <p className="muted">Loading puzzle catalog...</p> : null}
           {isLoadingItem && isExerciseRunning ? <p className="muted">Loading next exercise...</p> : null}
 
           {isExerciseRunning && currentItem ? (

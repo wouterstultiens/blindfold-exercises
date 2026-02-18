@@ -5,13 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
+    "build": "npm run typecheck && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "puzzles:download": "python3 scripts/download_syzygy.py",
-    "puzzles:build": "python3 scripts/build_tablebase_puzzles.py",
-    "puzzles:build:subset": "python3 scripts/build_tablebase_puzzles.py --subset-count 50 --target-count 100"
+    "puzzles:download": "python scripts/download_lichess_db.py",
+    "puzzles:build": "python scripts/build_lichess_puzzles.py",
+    "puzzles:build:subset": "python scripts/build_lichess_puzzles.py --target-per-combo 6 --max-rating 1400 --max-rows 80000 --seed 7",
+    "puzzles:build:tiny": "python scripts/build_lichess_puzzles.py --target-per-combo 2 --candidate-multiplier 2 --max-rating 1200 --max-rows 12000 --seed 7"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.2",

@@ -52,15 +52,15 @@ export function summarizeSessions(sessions: SessionRecord[], attempts: AttemptRe
 }
 
 export function puzzleComboStats(attempts: AttemptRecord[]): PuzzleComboStat[] {
-  const buckets = new Map<string, { attempts: number; correct: number; maxPieces: number; targetRating: number }>();
+  const buckets = new Map<string, { attempts: number; correct: number; pieceCount: number; ratingBucket: number }>();
 
   for (const attempt of attempts) {
     if (attempt.mode !== "puzzle_recall" || !attempt.settings_payload) {
       continue;
     }
-    const { maxPieces, targetRating } = attempt.settings_payload;
-    const key = `${maxPieces}:${targetRating}`;
-    const bucket = buckets.get(key) ?? { attempts: 0, correct: 0, maxPieces, targetRating };
+    const { pieceCount, ratingBucket } = attempt.settings_payload;
+    const key = `${pieceCount}-${ratingBucket}`;
+    const bucket = buckets.get(key) ?? { attempts: 0, correct: 0, pieceCount, ratingBucket };
     bucket.attempts += 1;
     if (attempt.correct) {
       bucket.correct += 1;
@@ -70,10 +70,10 @@ export function puzzleComboStats(attempts: AttemptRecord[]): PuzzleComboStat[] {
 
   return [...buckets.values()]
     .map((bucket) => ({
-      maxPieces: bucket.maxPieces,
-      targetRating: bucket.targetRating,
+      pieceCount: bucket.pieceCount,
+      ratingBucket: bucket.ratingBucket,
       attempts: bucket.attempts,
       correctPercent: bucket.attempts === 0 ? 0 : (bucket.correct / bucket.attempts) * 100
     }))
-    .sort((a, b) => b.attempts - a.attempts || a.maxPieces - b.maxPieces || a.targetRating - b.targetRating);
+    .sort((a, b) => b.attempts - a.attempts || a.pieceCount - b.pieceCount || a.ratingBucket - b.ratingBucket);
 }

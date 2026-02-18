@@ -32,33 +32,14 @@ create table if not exists sessions (
   attempt_count integer not null default 0
 );
 
-create table if not exists puzzle_bank (
-  puzzle_id text primary key,
-  fen text not null,
-  side_to_move text not null check (side_to_move in ('w', 'b')),
-  rating integer not null,
-  piece_count integer not null,
-  white_pieces text[] not null,
-  black_pieces text[] not null,
-  continuation_san text[] not null,
-  continuation_text text not null,
-  source text not null default 'lichess',
-  created_at timestamptz not null default now(),
-  last_seen_at timestamptz not null default now()
-);
+drop table if exists puzzle_bank;
 
 create index if not exists attempts_user_id_idx on attempts(user_id);
 create index if not exists sessions_user_id_idx on sessions(user_id);
-create index if not exists puzzle_bank_rating_idx on puzzle_bank(rating);
-create index if not exists puzzle_bank_piece_count_idx on puzzle_bank(piece_count);
-create index if not exists puzzle_bank_rating_piece_idx on puzzle_bank(rating, piece_count);
-create index if not exists puzzle_bank_created_at_idx on puzzle_bank(created_at);
-create index if not exists puzzle_bank_last_seen_at_idx on puzzle_bank(last_seen_at);
 
 alter table profiles enable row level security;
 alter table attempts enable row level security;
 alter table sessions enable row level security;
-alter table puzzle_bank enable row level security;
 
 drop policy if exists "profiles_select_own" on profiles;
 create policy "profiles_select_own" on profiles
@@ -86,8 +67,3 @@ create policy "sessions_rw_own" on sessions
   for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
-
-drop policy if exists "puzzle_bank_select_auth" on puzzle_bank;
-create policy "puzzle_bank_select_auth" on puzzle_bank
-  for select
-  using (auth.role() = 'authenticated');

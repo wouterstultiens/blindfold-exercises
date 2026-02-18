@@ -1,10 +1,11 @@
 export type ExerciseMode = "square_color" | "puzzle_recall";
 
 export interface PuzzleSettings {
-  maxPieces: number;
+  pieceCount: number;
+  ratingBucket: number;
 }
 
-export type PuzzleSource = "tablebase_syzygy";
+export type PuzzleSource = "lichess_static";
 
 export interface SquareColorItem {
   id: string;
@@ -19,8 +20,8 @@ export interface PuzzleRecallItem {
   puzzleId: string;
   fen: string;
   sideToMove: "w" | "b";
-  rating: number;
   pieceCount: number;
+  ratingBucket: number;
   whitePieces: string[];
   blackPieces: string[];
   continuationSan: string[];
@@ -61,8 +62,8 @@ export interface SessionRecord {
 }
 
 export interface PuzzleComboStat {
-  maxPieces: number;
-  targetRating: number;
+  pieceCount: number;
+  ratingBucket: number;
   attempts: number;
   correctPercent: number;
 }

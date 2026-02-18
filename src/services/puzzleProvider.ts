@@ -6,6 +6,7 @@ export interface PuzzleRecallSeed {
   fen: string;
   sideToMove: "w" | "b";
   pieceCount: number;
+  ratingBucket: number;
   whitePieces: string[];
   blackPieces: string[];
   continuationSan: string[];
@@ -18,11 +19,12 @@ interface PuzzleManifest {
   version: number;
   generatedAt: string;
   source: string;
-  maxPieces: number;
   maxContinuationPlies: number;
-  sourcesUsed: string[];
-  count: number;
-  puzzlesFile: string;
+  pieceCounts: number[];
+  ratingBuckets: number[];
+  countsByCombo: Record<string, number>;
+  shardPattern: string;
+  totalCount: number;
 }
 
 interface RawPuzzleSeed {
@@ -30,6 +32,7 @@ interface RawPuzzleSeed {
   fen: unknown;
   sideToMove: unknown;
   pieceCount: unknown;
+  ratingBucket: unknown;
   whitePieces: unknown;
   blackPieces: unknown;
   continuationSan: unknown;
@@ -38,14 +41,21 @@ interface RawPuzzleSeed {
   source?: unknown;
 }
 
-const RECENT_PUZZLES_KEY = "blindfold.puzzle-recent.v2";
-const RECENT_IDS_SIZE = 40;
+export interface PuzzleCatalog {
+  pieceCounts: number[];
+  ratingBuckets: number[];
+  countsByCombo: Record<string, number>;
+}
+
+const RECENT_PUZZLES_KEY_PREFIX = "blindfold.puzzle-recent.v3";
+const RECENT_IDS_SIZE = 50;
 const MANIFEST_FILE = "manifest.json";
 const MISSING_DB_HINT = "Puzzle DB not found. Run `npm run puzzles:build` to generate `public/puzzles/*`.";
+const MANIFEST_VERSION = 6;
 const MAX_CLEAR_CONTINUATION_PLIES = 4;
 
 let manifestPromise: Promise<PuzzleManifest> | null = null;
-let puzzlesPromise: Promise<PuzzleRecallSeed[]> | null = null;
+const shardPromises = new Map<string, Promise<PuzzleRecallSeed[]>>();
 
 function baseAssetPath(): string {
   const base = import.meta.env.BASE_URL ?? "/";
@@ -56,6 +66,14 @@ function puzzleAssetUrl(file: string): string {
   return `${baseAssetPath()}puzzles/${file}`;
 }
 
+function comboKey(settings: Pick<PuzzleSettings, "pieceCount" | "ratingBucket">): string {
+  return `p${settings.pieceCount}-r${settings.ratingBucket}`;
+}
+
+function comboRecentKey(settings: Pick<PuzzleSettings, "pieceCount" | "ratingBucket">): string {
+  return `${RECENT_PUZZLES_KEY_PREFIX}.${comboKey(settings)}`;
+}
+
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
@@ -63,13 +81,13 @@ function isStringArray(value: unknown): value is string[] {
 function parseSeed(raw: RawPuzzleSeed): PuzzleRecallSeed | null {
   const themes = raw.themes;
   const parsedThemes = isStringArray(themes) ? themes : undefined;
-  const source: PuzzleSource = raw.source === "tablebase_syzygy" ? "tablebase_syzygy" : "tablebase_syzygy";
 
   if (
     typeof raw.puzzleId !== "string" ||
     typeof raw.fen !== "string" ||
     (raw.sideToMove !== "w" && raw.sideToMove !== "b") ||
     typeof raw.pieceCount !== "number" ||
+    typeof raw.ratingBucket !== "number" ||
     !isStringArray(raw.whitePieces) ||
     !isStringArray(raw.blackPieces) ||
     !isStringArray(raw.continuationSan) ||
@@ -84,12 +102,13 @@ function parseSeed(raw: RawPuzzleSeed): PuzzleRecallSeed | null {
     fen: raw.fen,
     sideToMove: raw.sideToMove,
     pieceCount: raw.pieceCount,
+    ratingBucket: raw.ratingBucket,
     whitePieces: raw.whitePieces,
     blackPieces: raw.blackPieces,
     continuationSan: raw.continuationSan,
     continuationText: raw.continuationText,
     themes: parsedThemes,
-    source
+    source: "lichess_static"
   };
 }
 
@@ -98,11 +117,11 @@ function isClearShortPuzzle(seed: PuzzleRecallSeed): boolean {
 }
 
 function matchesSettings(seed: PuzzleRecallSeed, settings: PuzzleSettings): boolean {
-  return seed.pieceCount <= settings.maxPieces && isClearShortPuzzle(seed);
+  return seed.pieceCount === settings.pieceCount && seed.ratingBucket === settings.ratingBucket && isClearShortPuzzle(seed);
 }
 
-function readRecentPuzzleIds(): string[] {
-  const raw = localStorage.getItem(RECENT_PUZZLES_KEY);
+function readRecentPuzzleIds(settings: PuzzleSettings): string[] {
+  const raw = localStorage.getItem(comboRecentKey(settings));
   if (!raw) {
     return [];
   }
@@ -117,10 +136,10 @@ function readRecentPuzzleIds(): string[] {
   }
 }
 
-function markRecentPuzzleId(puzzleId: string): void {
-  const next = readRecentPuzzleIds().filter((id) => id !== puzzleId);
+function markRecentPuzzleId(settings: PuzzleSettings, puzzleId: string): void {
+  const next = readRecentPuzzleIds(settings).filter((id) => id !== puzzleId);
   next.push(puzzleId);
-  localStorage.setItem(RECENT_PUZZLES_KEY, JSON.stringify(next.slice(-RECENT_IDS_SIZE)));
+  localStorage.setItem(comboRecentKey(settings), JSON.stringify(next.slice(-RECENT_IDS_SIZE)));
 }
 
 async function fetchJson(url: string): Promise<unknown> {
@@ -143,38 +162,44 @@ function parseManifest(raw: unknown): PuzzleManifest {
   const version = candidate.version;
   const generatedAt = candidate.generatedAt;
   const source = candidate.source;
-  const maxPieces = candidate.maxPieces;
   const maxContinuationPlies = candidate.maxContinuationPlies;
-  const sourcesUsed = candidate.sourcesUsed;
-  const count = candidate.count;
-  const puzzlesFile = candidate.puzzlesFile;
+  const pieceCounts = candidate.pieceCounts;
+  const ratingBuckets = candidate.ratingBuckets;
+  const countsByCombo = candidate.countsByCombo;
+  const shardPattern = candidate.shardPattern;
+  const totalCount = candidate.totalCount;
 
   if (
     typeof version !== "number" ||
     typeof generatedAt !== "string" ||
     typeof source !== "string" ||
-    typeof maxPieces !== "number" ||
     typeof maxContinuationPlies !== "number" ||
-    !Array.isArray(sourcesUsed) ||
-    typeof count !== "number" ||
-    typeof puzzlesFile !== "string"
+    !Array.isArray(pieceCounts) ||
+    !Array.isArray(ratingBuckets) ||
+    !countsByCombo ||
+    typeof countsByCombo !== "object" ||
+    typeof shardPattern !== "string" ||
+    typeof totalCount !== "number"
   ) {
     throw new Error(`Invalid puzzle manifest shape. ${MISSING_DB_HINT}`);
   }
 
-  if (!sourcesUsed.every((entry) => typeof entry === "string")) {
-    throw new Error(`Invalid puzzle manifest sources. ${MISSING_DB_HINT}`);
+  const parsedPieceCounts = pieceCounts.map((value) => Number(value)).filter((value) => Number.isFinite(value));
+  const parsedRatingBuckets = ratingBuckets.map((value) => Number(value)).filter((value) => Number.isFinite(value));
+  if (parsedPieceCounts.length === 0 || parsedRatingBuckets.length === 0) {
+    throw new Error(`Invalid puzzle manifest lists. ${MISSING_DB_HINT}`);
   }
 
   return {
     version,
     generatedAt,
     source,
-    maxPieces,
     maxContinuationPlies,
-    sourcesUsed: sourcesUsed as string[],
-    count,
-    puzzlesFile
+    pieceCounts: parsedPieceCounts,
+    ratingBuckets: parsedRatingBuckets,
+    countsByCombo: countsByCombo as Record<string, number>,
+    shardPattern,
+    totalCount
   };
 }
 
@@ -190,50 +215,85 @@ async function loadManifest(): Promise<PuzzleManifest> {
   return manifestPromise;
 }
 
-async function loadPuzzles(manifest: PuzzleManifest): Promise<PuzzleRecallSeed[]> {
-  if (!puzzlesPromise) {
-    puzzlesPromise = fetchJson(puzzleAssetUrl(manifest.puzzlesFile))
+function shardPathFor(manifest: PuzzleManifest, settings: PuzzleSettings): string {
+  if (manifest.shardPattern.includes("{pieceCount}") && manifest.shardPattern.includes("{ratingBucket}")) {
+    return manifest.shardPattern
+      .replaceAll("{pieceCount}", String(settings.pieceCount))
+      .replaceAll("{ratingBucket}", String(settings.ratingBucket));
+  }
+
+  return `lichess/p${settings.pieceCount}/r${settings.ratingBucket}.json`;
+}
+
+async function loadShard(manifest: PuzzleManifest, settings: PuzzleSettings): Promise<PuzzleRecallSeed[]> {
+  const key = comboKey(settings);
+  if (!shardPromises.has(key)) {
+    const file = shardPathFor(manifest, settings);
+    const promise = fetchJson(puzzleAssetUrl(file))
       .then((raw) => {
         if (!Array.isArray(raw)) {
-          throw new Error(`Invalid puzzle shard format: ${manifest.puzzlesFile}`);
+          throw new Error(`Invalid puzzle shard format: ${file}`);
         }
         return raw
           .map((item) => parseSeed(item as RawPuzzleSeed))
           .filter((item): item is PuzzleRecallSeed => item !== null);
       })
       .catch((error) => {
-        puzzlesPromise = null;
+        shardPromises.delete(key);
         throw error;
       });
+
+    shardPromises.set(key, promise);
   }
-  return puzzlesPromise;
+
+  return shardPromises.get(key)!;
 }
 
 function dedupeSeeds(items: PuzzleRecallSeed[]): PuzzleRecallSeed[] {
   return [...new Map(items.map((item) => [item.puzzleId, item])).values()];
 }
 
-export async function getNextPuzzle(settings: PuzzleSettings): Promise<PuzzleRecallSeed> {
+export async function getPuzzleCatalog(): Promise<PuzzleCatalog> {
   const manifest = await loadManifest();
-  if (manifest.version !== 5) {
+  if (manifest.version !== MANIFEST_VERSION) {
     throw new Error(`Unsupported puzzle manifest version ${manifest.version}. Regenerate puzzle DB.`);
   }
 
-  const puzzles = await loadPuzzles(manifest);
+  return {
+    pieceCounts: [...manifest.pieceCounts].sort((a, b) => a - b),
+    ratingBuckets: [...manifest.ratingBuckets].sort((a, b) => a - b),
+    countsByCombo: manifest.countsByCombo
+  };
+}
+
+export async function getNextPuzzle(settings: PuzzleSettings): Promise<PuzzleRecallSeed> {
+  const manifest = await loadManifest();
+  if (manifest.version !== MANIFEST_VERSION) {
+    throw new Error(`Unsupported puzzle manifest version ${manifest.version}. Regenerate puzzle DB.`);
+  }
+
+  if (!manifest.pieceCounts.includes(settings.pieceCount) || !manifest.ratingBuckets.includes(settings.ratingBucket)) {
+    throw new Error("Selected puzzle settings are not available in this puzzle DB.");
+  }
+  const combo = comboKey(settings);
+  if (!Object.hasOwn(manifest.countsByCombo, combo) || Number(manifest.countsByCombo[combo]) <= 0) {
+    throw new Error(`No puzzle matched ${settings.pieceCount} pieces @ ${settings.ratingBucket}.`);
+  }
+
+  const puzzles = await loadShard(manifest, settings);
   if (puzzles.length === 0) {
-    throw new Error("Puzzle DB is empty. Regenerate puzzle DB.");
+    throw new Error("Puzzle DB combo shard is empty. Regenerate puzzle DB.");
   }
 
-  const matches = dedupeSeeds(puzzles).filter((seed) => matchesSettings(seed, settings));
-  const pool = matches.length > 0 ? matches : puzzles.filter((seed) => seed.pieceCount <= settings.maxPieces);
+  const pool = dedupeSeeds(puzzles).filter((seed) => matchesSettings(seed, settings));
   if (pool.length === 0) {
-    throw new Error("No puzzle matched this max piece setting. Regenerate puzzle DB with broader criteria.");
+    throw new Error(`No puzzle matched ${settings.pieceCount} pieces @ ${settings.ratingBucket}. Regenerate puzzle DB.`);
   }
 
-  const recentIds = new Set(readRecentPuzzleIds());
+  const recentIds = new Set(readRecentPuzzleIds(settings));
   const fresh = pool.filter((seed) => !recentIds.has(seed.puzzleId));
   const selected = pickRandom(fresh.length > 0 ? fresh : pool);
-  markRecentPuzzleId(selected.puzzleId);
+  markRecentPuzzleId(settings, selected.puzzleId);
   return selected;
 }
 
@@ -243,5 +303,5 @@ export function toPieceLines(seed: Pick<PuzzleRecallSeed, "whitePieces" | "black
 
 export function __resetPuzzleDbCacheForTests(): void {
   manifestPromise = null;
-  puzzlesPromise = null;
+  shardPromises.clear();
 }

@@ -1,1 +1,0 @@
-[{"puzzleId":"00GuG","fen":"8/7p/1KR3k1/8/5p2/5n2/8/8 b - - 1 63","sideToMove":"b","rating":2592,"pieceCount":6,"whitePieces":["Kb6","Rc6"],"blackPieces":["Kg6","Nf3","Pf4","Ph7"],"continuationSan":["Kf5","Kc5","h5"],"continuationText":"63... Kf5 64. Kc5 64... h5","themes":["advantage","defensiveMove","endgame","master","short"],"source":"local_db"}]

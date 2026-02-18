@@ -72,7 +72,9 @@ export function ExerciseCard({ item, attemptsInSession, disabled = false, onSqua
       </div>
 
       <p className="prompt">{puzzleSideLabel(puzzleItem.sideToMove)}</p>
-      <p className="muted">Rating {puzzleItem.rating} | Pieces {puzzleItem.pieceCount}</p>
+      <p className="muted">
+        {puzzleItem.pieceCount} pieces | bucket {puzzleItem.ratingBucket}
+      </p>
       <PieceLines item={puzzleItem} />
 
       {!revealed ? (

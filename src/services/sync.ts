@@ -44,16 +44,24 @@ export interface SyncResult {
   sessions: SessionRecord[];
 }
 
-function parseSettings(payload: Record<string, unknown>): { maxPieces: number } | null {
+function parseSettings(payload: Record<string, unknown>): { pieceCount: number; ratingBucket: number } | null {
   const raw = payload.settings;
   if (!raw || typeof raw !== "object") {
     return null;
   }
+  const pieceCount = Number((raw as { pieceCount?: unknown }).pieceCount);
+  const ratingBucket = Number((raw as { ratingBucket?: unknown }).ratingBucket);
+
+  if (Number.isFinite(pieceCount) && Number.isFinite(ratingBucket)) {
+    return { pieceCount, ratingBucket };
+  }
+
+  // Legacy fallback for older synced payloads.
   const maxPieces = Number((raw as { maxPieces?: unknown }).maxPieces);
   if (!Number.isFinite(maxPieces)) {
     return null;
   }
-  return { maxPieces };
+  return { pieceCount: maxPieces, ratingBucket: 1200 };
 }
 
 function toDbAttempt(attempt: AttemptRecord): AttemptDbRow {

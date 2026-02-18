@@ -1,29 +1,48 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { __resetPuzzleDbCacheForTests, getNextPuzzle } from "./puzzleProvider";
+import { __resetPuzzleDbCacheForTests, getNextPuzzle, getPuzzleCatalog } from "./puzzleProvider";
 
-const SETTINGS = { maxPieces: 4, targetRating: 1500 };
+const SETTINGS = { pieceCount: 4, ratingBucket: 1200 };
 
 const MANIFEST = {
-  version: 1,
-  generatedAt: "2026-02-17T00:00:00.000Z",
-  files: [
-    { bucket: 1400, file: "r1400.json", count: 1 },
-    { bucket: 1500, file: "r1500.json", count: 2 },
-    { bucket: 1600, file: "r1600.json", count: 0 }
-  ]
+  version: 6,
+  generatedAt: "2026-02-18T00:00:00.000Z",
+  source: "lichess_db",
+  maxContinuationPlies: 4,
+  pieceCounts: [3, 4],
+  ratingBuckets: [1200, 1400],
+  countsByCombo: {
+    "p4-r1200": 2,
+    "p3-r1200": 1,
+    "p4-r1400": 1
+  },
+  shardPattern: "lichess/p{pieceCount}/r{ratingBucket}.json",
+  totalCount: 4
 };
 
-const SHARD_1400 = [
+const SHARD_P4_R1200 = [
   {
-    puzzleId: "too-many-pieces",
-    fen: "8/8/8/8/8/8/8/K6k w - - 0 1",
+    puzzleId: "p-1",
+    fen: "6k1/8/6K1/8/8/8/6Q1/8 w - - 0 1",
     sideToMove: "w",
-    rating: 1450,
-    pieceCount: 10,
-    whitePieces: ["Ka1"],
-    blackPieces: ["Kh1"],
-    continuationSan: ["Qh7#"],
-    continuationText: "1. Qh7#"
+    pieceCount: 4,
+    ratingBucket: 1200,
+    whitePieces: ["Kg6", "Qg2"],
+    blackPieces: ["Kg8", "Rh8"],
+    continuationSan: ["Qh7+", "Kf8", "Qh8#"],
+    continuationText: "1. Qh7+ 1... Kf8 2. Qh8#",
+    source: "lichess_static"
+  },
+  {
+    puzzleId: "p-2",
+    fen: "6k1/8/5QK1/8/8/8/8/7r w - - 0 1",
+    sideToMove: "w",
+    pieceCount: 4,
+    ratingBucket: 1200,
+    whitePieces: ["Kg6", "Qf6"],
+    blackPieces: ["Kg8", "Rh1"],
+    continuationSan: ["Qd8+", "Kh7", "Qh8+"],
+    continuationText: "1. Qd8+ 1... Kh7 2. Qh8+",
+    source: "lichess_static"
   }
 ];
 
@@ -51,31 +70,6 @@ function createMockLocalStorage(): Storage {
   } as Storage;
 }
 
-const SHARD_1500 = [
-  {
-    puzzleId: "p-1",
-    fen: "8/8/8/8/8/8/8/K6k w - - 0 1",
-    sideToMove: "w",
-    rating: 1500,
-    pieceCount: 2,
-    whitePieces: ["Ka1"],
-    blackPieces: ["Kh1"],
-    continuationSan: ["Qh7#"],
-    continuationText: "1. Qh7#"
-  },
-  {
-    puzzleId: "p-2",
-    fen: "8/8/8/8/8/8/8/K6k w - - 0 1",
-    sideToMove: "w",
-    rating: 1520,
-    pieceCount: 3,
-    whitePieces: ["Ka1"],
-    blackPieces: ["Kh1"],
-    continuationSan: ["Qh7#"],
-    continuationText: "1. Qh7#"
-  }
-];
-
 function mockStaticDb(): void {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
@@ -85,20 +79,8 @@ function mockStaticDb(): void {
         headers: { "content-type": "application/json" }
       });
     }
-    if (url.endsWith("/puzzles/r1400.json")) {
-      return new Response(JSON.stringify(SHARD_1400), {
-        status: 200,
-        headers: { "content-type": "application/json" }
-      });
-    }
-    if (url.endsWith("/puzzles/r1500.json")) {
-      return new Response(JSON.stringify(SHARD_1500), {
-        status: 200,
-        headers: { "content-type": "application/json" }
-      });
-    }
-    if (url.endsWith("/puzzles/r1600.json")) {
-      return new Response(JSON.stringify([]), {
+    if (url.endsWith("/puzzles/lichess/p4/r1200.json")) {
+      return new Response(JSON.stringify(SHARD_P4_R1200), {
         status: 200,
         headers: { "content-type": "application/json" }
       });
@@ -116,17 +98,17 @@ describe("getNextPuzzle static-db flow", () => {
     __resetPuzzleDbCacheForTests();
   });
 
-  it("loads matching puzzles from static shards", async () => {
+  it("loads matching puzzles from selected combo shard", async () => {
     mockStaticDb();
     vi.spyOn(Math, "random").mockReturnValue(0);
 
     const seed = await getNextPuzzle(SETTINGS);
 
     expect(seed.puzzleId).toBe("p-1");
-    expect(seed.source).toBe("local_db");
+    expect(seed.source).toBe("lichess_static");
   });
 
-  it("avoids immediate repeats using recent-id memory", async () => {
+  it("avoids immediate repeats using combo-scoped recent-id memory", async () => {
     mockStaticDb();
     vi.spyOn(Math, "random").mockReturnValue(0);
 
@@ -137,7 +119,7 @@ describe("getNextPuzzle static-db flow", () => {
     expect(second.puzzleId).toBe("p-2");
   });
 
-  it("reuses in-memory shard cache between calls", async () => {
+  it("reuses in-memory cache between calls", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     fetchSpy.mockImplementation(async (input) => {
       const url = String(input);
@@ -147,20 +129,8 @@ describe("getNextPuzzle static-db flow", () => {
           headers: { "content-type": "application/json" }
         });
       }
-      if (url.endsWith("/puzzles/r1400.json")) {
-        return new Response(JSON.stringify(SHARD_1400), {
-          status: 200,
-          headers: { "content-type": "application/json" }
-        });
-      }
-      if (url.endsWith("/puzzles/r1500.json")) {
-        return new Response(JSON.stringify(SHARD_1500), {
-          status: 200,
-          headers: { "content-type": "application/json" }
-        });
-      }
-      if (url.endsWith("/puzzles/r1600.json")) {
-        return new Response(JSON.stringify([]), {
+      if (url.endsWith("/puzzles/lichess/p4/r1200.json")) {
+        return new Response(JSON.stringify(SHARD_P4_R1200), {
           status: 200,
           headers: { "content-type": "application/json" }
         });
@@ -171,125 +141,14 @@ describe("getNextPuzzle static-db flow", () => {
     await getNextPuzzle(SETTINGS);
     await getNextPuzzle(SETTINGS);
 
-    expect(fetchSpy).toHaveBeenCalledTimes(4);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("accepts tactical themed puzzles without requiring mate marker", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = String(input);
-      if (url.endsWith("/puzzles/manifest.json")) {
-        return new Response(
-          JSON.stringify({
-            version: 2,
-            generatedAt: "2026-02-17T00:00:00.000Z",
-            files: [{ bucket: 1500, file: "r1500.json", count: 1 }]
-          }),
-          { status: 200, headers: { "content-type": "application/json" } }
-        );
-      }
-      if (url.endsWith("/puzzles/r1500.json")) {
-        return new Response(
-          JSON.stringify([
-            {
-              puzzleId: "tactical-themed",
-              fen: "8/8/8/8/8/8/8/K6k w - - 0 1",
-              sideToMove: "w",
-              rating: 1500,
-              pieceCount: 4,
-              whitePieces: ["Ka1"],
-              blackPieces: ["Kh1"],
-              continuationSan: ["Qxd5"],
-              continuationText: "1. Qxd5",
-              themes: ["fork", "middlegame"]
-            }
-          ]),
-          { status: 200, headers: { "content-type": "application/json" } }
-        );
-      }
-      return new Response("not found", { status: 404 });
-    });
+  it("exposes piece-count and rating buckets from manifest", async () => {
+    mockStaticDb();
 
-    const seed = await getNextPuzzle(SETTINGS);
-    expect(seed.puzzleId).toBe("tactical-themed");
-  });
-
-  it("accepts low-piece endgame themed puzzles", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = String(input);
-      if (url.endsWith("/puzzles/manifest.json")) {
-        return new Response(
-          JSON.stringify({
-            version: 4,
-            generatedAt: "2026-02-17T00:00:00.000Z",
-            files: [{ bucket: 1500, file: "r1500.json", count: 1 }]
-          }),
-          { status: 200, headers: { "content-type": "application/json" } }
-        );
-      }
-      if (url.endsWith("/puzzles/r1500.json")) {
-        return new Response(
-          JSON.stringify([
-            {
-              puzzleId: "endgame-short",
-              fen: "8/8/8/8/8/8/8/K6k w - - 0 1",
-              sideToMove: "w",
-              rating: 1500,
-              pieceCount: 2,
-              whitePieces: ["Ka1"],
-              blackPieces: ["Kh1"],
-              continuationSan: ["Kb2"],
-              continuationText: "1. Kb2",
-              themes: ["endgame", "short"],
-              source: "local_db"
-            }
-          ]),
-          { status: 200, headers: { "content-type": "application/json" } }
-        );
-      }
-      return new Response("not found", { status: 404 });
-    });
-
-    const seed = await getNextPuzzle(SETTINGS);
-    expect(seed.puzzleId).toBe("endgame-short");
-  });
-
-  it("accepts tablebase seeds without mate markers", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = String(input);
-      if (url.endsWith("/puzzles/manifest.json")) {
-        return new Response(
-          JSON.stringify({
-            version: 4,
-            generatedAt: "2026-02-17T00:00:00.000Z",
-            files: [{ bucket: 1500, file: "r1500.json", count: 1 }]
-          }),
-          { status: 200, headers: { "content-type": "application/json" } }
-        );
-      }
-      if (url.endsWith("/puzzles/r1500.json")) {
-        return new Response(
-          JSON.stringify([
-            {
-              puzzleId: "tb-1",
-              fen: "8/8/8/8/8/8/8/K6k w - - 0 1",
-              sideToMove: "w",
-              rating: 1500,
-              pieceCount: 2,
-              whitePieces: ["Ka1"],
-              blackPieces: ["Kh1"],
-              continuationSan: ["Kb2", "Kh2"],
-              continuationText: "1. Kb2 1... Kh2",
-              source: "tablebase_api"
-            }
-          ]),
-          { status: 200, headers: { "content-type": "application/json" } }
-        );
-      }
-      return new Response("not found", { status: 404 });
-    });
-
-    const seed = await getNextPuzzle(SETTINGS);
-    expect(seed.puzzleId).toBe("tb-1");
-    expect(seed.source).toBe("tablebase_api");
+    const catalog = await getPuzzleCatalog();
+    expect(catalog.pieceCounts).toEqual([3, 4]);
+    expect(catalog.ratingBuckets).toEqual([1200, 1400]);
   });
 });

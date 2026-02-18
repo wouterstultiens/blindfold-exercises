@@ -11,7 +11,7 @@ function settingsLabel(session: SessionRecord): string {
   if (session.mode !== "puzzle_recall" || !session.settings_payload) {
     return "-";
   }
-  return `${session.settings_payload.maxPieces} pieces @ ${session.settings_payload.targetRating}`;
+  return `${session.settings_payload.pieceCount} pieces @ ${session.settings_payload.ratingBucket}`;
 }
 
 export function Dashboard({ attempts, sessions }: DashboardProps) {
@@ -44,26 +44,25 @@ export function Dashboard({ attempts, sessions }: DashboardProps) {
       <article className="panel">
         <h3>Puzzle Combo Scores</h3>
         <div className="table">
-          <div className="row row-4 header">
+          <div className="row row-3 header">
             <span>Settings</span>
             <span>Attempts</span>
             <span>Correct %</span>
-            <span>Range</span>
           </div>
           {comboRows.length === 0 ? (
-            <div className="row row-4">
+            <div className="row row-3">
               <span>No puzzle attempts yet.</span>
-              <span>-</span>
               <span>-</span>
               <span>-</span>
             </div>
           ) : (
             comboRows.map((row) => (
-              <div className="row row-4" key={`${row.maxPieces}-${row.targetRating}`}>
-                <span>{row.maxPieces} pieces / {row.targetRating}</span>
+              <div className="row row-3" key={`${row.pieceCount}-${row.ratingBucket}`}>
+                <span>
+                  {row.pieceCount} pieces @ {row.ratingBucket}
+                </span>
                 <span>{row.attempts}</span>
                 <span>{Math.round(row.correctPercent)}%</span>
-                <span>{row.targetRating - 100} to {row.targetRating + 100}</span>
               </div>
             ))
           )}

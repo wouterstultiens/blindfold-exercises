@@ -1,99 +1,77 @@
 # Blindfold Chess Trainer
 
-Blindfold trainer with exactly 2 exercises: square color and puzzle recall.
+Blindfold trainer with exactly two drills: square color and static Lichess puzzle recall.
 
 ## Quick Start
 
-Prerequisite: install `zstd` (CLI) so the local puzzle DB can be generated from `lichess_db_puzzle.csv.zst`.
-
 ```bash
 npm install
-cp .env.example .env
-npm run puzzles:build:blindfold
+python -m pip install -r requirements.txt
 npm run dev
 ```
 
 Open `http://localhost:5173`.
 
-Optional checks:
+Validation:
 
 ```bash
 npm test
 npm run build
 ```
 
-## Puzzle DB (Local + GitHub Pages)
+## Puzzle Data (Static, No Per-Puzzle API Calls)
 
-Puzzle recall reads a static local puzzle database generated into `public/puzzles/`.
+Puzzle Recall only reads committed static files under `public/puzzles/`.
 
-- Source inputs: `lichess_db_puzzle.csv.zst` + Lichess tablebase API (`https://tablebase.lichess.ovh/standard`)
-- Generator: `scripts/build-puzzle-db.mjs`
-- Command: `npm run puzzles:build`
-- Output: `public/puzzles/manifest.json` + rating shard files (`r1400.json`, `r1500.json`, ...)
-- Build state: `public/puzzles/build-state.json` (resume progress between runs)
+Build/update puzzle shards from Lichess CSV:
 
-The generator is incremental by default:
+```bash
+npm run puzzles:download
+npm run puzzles:build
+```
 
-- Each run processes a chunk of rows and saves progress.
-- Run it again later to continue where it stopped.
-- Useful commands:
-  - `npm run puzzles:build` (resume, default chunk)
-  - `npm run puzzles:build:blindfold` (reset + rebuild for 2..7-piece blindfold pool)
-  - `npm run puzzles:build -- --rows 100000` (custom chunk size)
-  - `npm run puzzles:build -- --max-pieces 7 --max-plies 4` (blindfold-focused short lines)
-  - `npm run puzzles:build -- --sources lichess` (Lichess only)
-  - `npm run puzzles:build -- --sources tablebase --tablebase-budget 500` (tablebase-derived only)
-  - `npm run puzzles:build -- --full` (process until EOF in one run)
-  - `npm run puzzles:build -- --reset` (start over from scratch)
-  - `npm run puzzles:build -- --reset --rows 50000 --max-pieces 7 --max-plies 4` (restart strict blindfold pool)
+Quick iteration build (tiny sample, fast):
 
-After changing puzzle filter rules, run one `--reset` build to regenerate shards with the new policy.
-If you change filter knobs (`--max-pieces`, `--max-plies`, `--sources`, endgame policy, or tablebase budget), use `--reset` so state and shards stay consistent.
+```bash
+npm run puzzles:build:tiny
+```
 
-Runtime does not call Lichess or Supabase for puzzle loading. It only loads static files and filters by:
+Small subset build:
 
-- `pieceCount <= maxPieces`
-- `rating in [targetRating - 100, targetRating + 100]`
-- short, clear continuation (`<= 4` plies by default)
-- low-piece endgames are allowed for blindfold-friendly pools
+```bash
+npm run puzzles:build:subset
+```
 
-If puzzle assets are missing, the app shows an actionable error telling you to run `npm run puzzles:build`.
+Build filters bias toward simple, obvious lines:
+
+- only 3..8-piece positions
+- seed position is stored after the initial setup ply from Lichess
+- short solutions (<= 4 plies, full line)
+- simple tactical themes (mate/fork/pin/skewer/hanging, etc.)
+- popularity and play-count minimums
+- motif balancing per `(pieceCount, ratingBucket)` shard
+
+Runtime puzzle settings:
+
+- Piece count: `3..8` (exact)
+- Rating bucket: fixed `200`-point buckets (e.g. `1000`, `1200`, `1400`)
+- Continuation clarity: max `4` plies
+- Progress tracked per `(pieceCount, ratingBucket)` combo
 
 ## Exercises
 
-- `Square Color`: app shows one square (`a4`, `g8`, etc.), you answer `white` or `black`.
-- `Puzzle Recall`: pick `max pieces` (2..7, including kings) and `target rating`; app serves short blindfold-friendly puzzles from the generated local DB shards.
-- You must click `Start` before an exercise is shown. Timer starts only once the exercise is visible.
+- `Square Color`: answer black/white for a shown square.
+- `Puzzle Recall`: memorize side to move + piece list, reveal line/board, self-grade.
 
-## Shared Progress (Laptop + Phone)
+## Shared Progress (Supabase)
 
-Progress is local-first and synced when signed in:
-
-- Sign in with GitHub (Supabase auth).
-- Attempts and session history sync across devices for the same account.
-- Session history tracks progress over time.
-- Puzzle scores are tracked per settings combo (`max pieces`, `target rating`) as attempts + correct %.
-
-## Supabase Setup (Auth + Sync)
-
-1. Create a Supabase project.
-2. Run `supabase/schema.sql` in the SQL editor.
-3. Enable GitHub OAuth in Supabase Auth.
-4. Set `.env` values:
-
-```bash
-VITE_SUPABASE_URL=your_project_url
-VITE_SUPABASE_ANON_KEY=your_anon_key
-VITE_BASE_PATH=/
-```
-
-For GitHub Pages deployment, set `VITE_BASE_PATH=/blindfold-exercises/`.
-Commit generated `public/puzzles/*` files so GitHub Pages serves your latest built puzzle DB.
+- Local-first persistence in `localStorage`
+- Optional GitHub auth via Supabase
+- Attempts/sessions sync across devices when signed in
 
 ## Tech Stack
 
-- React 18 + TypeScript
-- Vite 6 + `vite-plugin-pwa`
+- React 18 + TypeScript + Vite
 - `chess.js` + `react-chessboard`
-- Supabase (GitHub auth + progress sync)
-- Static puzzle DB generated from Lichess CSV (`.zst`) + tablebase-derived seeds
+- Python (`python-chess`, `zstandard`) for offline puzzle DB build
+- Supabase (GitHub auth + sync)

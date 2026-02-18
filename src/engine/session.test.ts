@@ -15,8 +15,8 @@ const baseAttempt: AttemptRecord = {
   latency_ms: 3500,
   created_at: new Date().toISOString(),
   settings_payload: {
-    maxPieces: 8,
-    targetRating: 1500
+    pieceCount: 5,
+    ratingBucket: 1200
   }
 };
 
@@ -28,8 +28,8 @@ const baseSession: SessionRecord = {
   duration_s: 300,
   mode: "puzzle_recall",
   settings_payload: {
-    maxPieces: 8,
-    targetRating: 1500
+    pieceCount: 5,
+    ratingBucket: 1200
   },
   status: "completed",
   attempt_count: 1,
@@ -53,6 +53,8 @@ describe("session summaries", () => {
   it("aggregates puzzle combo stats", () => {
     const rows = puzzleComboStats([baseAttempt, { ...baseAttempt, id: "a2", correct: false }]);
     expect(rows[0]?.attempts).toBe(2);
+    expect(rows[0]?.pieceCount).toBe(5);
+    expect(rows[0]?.ratingBucket).toBe(1200);
     expect(Math.round(rows[0]?.correctPercent ?? 0)).toBe(50);
   });
 });

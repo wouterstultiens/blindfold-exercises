@@ -1,7 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { __resetPuzzleDbCacheForTests, getNextPuzzle } from "./puzzleProvider";
 
-const SETTINGS = { maxPieces: 12, targetRating: 1500 };
+const SETTINGS = { pieceCount: 4, ratingBucket: 1200 };
+
+const MANIFEST = {
+  version: 6,
+  generatedAt: "2026-02-18T00:00:00.000Z",
+  source: "lichess_db",
+  maxContinuationPlies: 4,
+  pieceCounts: [4],
+  ratingBuckets: [1200],
+  countsByCombo: {
+    "p4-r1200": 1
+  },
+  shardPattern: "lichess/p{pieceCount}/r{ratingBucket}.json",
+  totalCount: 1
+};
 
 function createMockLocalStorage(): Storage {
   const store = new Map<string, string>();
@@ -42,69 +56,50 @@ describe("puzzle provider static-db errors", () => {
     await expect(getNextPuzzle(SETTINGS)).rejects.toThrow("npm run puzzles:build");
   });
 
-  it("fails clearly when no puzzle matches selected settings", async () => {
+  it("fails clearly when selected settings are not available", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
       if (url.endsWith("/puzzles/manifest.json")) {
         return new Response(
           JSON.stringify({
-            version: 1,
-            generatedAt: "2026-02-17T00:00:00.000Z",
-            files: [{ bucket: 1500, file: "r1500.json", count: 1 }]
+            ...MANIFEST,
+            pieceCounts: [3],
+            ratingBuckets: [1000],
+            countsByCombo: { "p3-r1000": 1 },
+            totalCount: 1
           }),
-          { status: 200, headers: { "content-type": "application/json" } }
-        );
-      }
-      if (url.endsWith("/puzzles/r1500.json")) {
-        return new Response(
-          JSON.stringify([
-            {
-              puzzleId: "x-1",
-              fen: "8/8/8/8/8/8/8/K6k w - - 0 1",
-              sideToMove: "w",
-              rating: 1500,
-              pieceCount: 20,
-              whitePieces: ["Ka1"],
-              blackPieces: ["Kh1"],
-              continuationSan: ["Kb1"],
-              continuationText: "1. Kb1"
-            }
-          ]),
           { status: 200, headers: { "content-type": "application/json" } }
         );
       }
       return new Response("not found", { status: 404 });
     });
 
-    await expect(getNextPuzzle(SETTINGS)).rejects.toThrow("No puzzle matched");
+    await expect(getNextPuzzle(SETTINGS)).rejects.toThrow("not available");
   });
 
   it("filters out puzzles longer than 4 plies", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
       if (url.endsWith("/puzzles/manifest.json")) {
-        return new Response(
-          JSON.stringify({
-            version: 4,
-            generatedAt: "2026-02-17T00:00:00.000Z",
-            files: [{ bucket: 1500, file: "r1500.json", count: 1 }]
-          }),
-          { status: 200, headers: { "content-type": "application/json" } }
-        );
+        return new Response(JSON.stringify(MANIFEST), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
       }
-      if (url.endsWith("/puzzles/r1500.json")) {
+      if (url.endsWith("/puzzles/lichess/p4/r1200.json")) {
         return new Response(
           JSON.stringify([
             {
               puzzleId: "x-long",
-              fen: "8/8/8/8/8/8/8/K6k w - - 0 1",
+              fen: "6k1/8/6K1/8/8/8/5Q1r/8 w - - 0 1",
               sideToMove: "w",
-              rating: 1500,
-              pieceCount: 2,
-              whitePieces: ["Ka1"],
-              blackPieces: ["Kh1"],
-              continuationSan: ["Kb2", "Kh2", "Kb3", "Kh3", "Kb4"],
-              continuationText: "1. Kb2 1... Kh2 2. Kb3 2... Kh3 3. Kb4"
+              pieceCount: 4,
+              ratingBucket: 1200,
+              whitePieces: ["Kg6", "Qf2"],
+              blackPieces: ["Kg8", "Rh2"],
+              continuationSan: ["Qxh2", "Kf8", "Qh8+", "Ke7", "Qe8+"],
+              continuationText: "1. Qxh2 1... Kf8 2. Qh8+ 2... Ke7 3. Qe8+",
+              source: "lichess_static"
             }
           ]),
           { status: 200, headers: { "content-type": "application/json" } }

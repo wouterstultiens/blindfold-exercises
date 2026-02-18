@@ -1,4 +1,4 @@
-import type { AttemptRecord, SessionRecord } from "../types";
+import type { AttemptRecord, PuzzleSettings, SessionRecord } from "../types";
 
 const ATTEMPTS_KEY = "blindfold.attempts.v2";
 const SESSIONS_KEY = "blindfold.sessions.v2";
@@ -19,6 +19,55 @@ function saveToStorage<T>(key: string, value: T): void {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+function normalizeSettings(raw: unknown): PuzzleSettings | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const pieceCount = Number((raw as { pieceCount?: unknown }).pieceCount);
+  const ratingBucket = Number((raw as { ratingBucket?: unknown }).ratingBucket);
+  if (Number.isFinite(pieceCount) && Number.isFinite(ratingBucket)) {
+    return { pieceCount, ratingBucket };
+  }
+
+  const maxPieces = Number((raw as { maxPieces?: unknown }).maxPieces);
+  if (!Number.isFinite(maxPieces)) {
+    return null;
+  }
+  return { pieceCount: maxPieces, ratingBucket: 1200 };
+}
+
+function normalizeAttempt(raw: Partial<AttemptRecord>): AttemptRecord | null {
+  if (
+    typeof raw.id !== "string" ||
+    typeof raw.session_id !== "string" ||
+    typeof raw.user_id !== "string" ||
+    typeof raw.item_id !== "string" ||
+    (raw.mode !== "square_color" && raw.mode !== "puzzle_recall") ||
+    typeof raw.expected_answer !== "string" ||
+    typeof raw.correct !== "boolean" ||
+    typeof raw.latency_ms !== "number" ||
+    typeof raw.created_at !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    id: raw.id,
+    session_id: raw.session_id,
+    user_id: raw.user_id,
+    item_id: raw.item_id,
+    mode: raw.mode,
+    prompt_payload: raw.prompt_payload ?? {},
+    answer_payload: raw.answer_payload ?? {},
+    expected_answer: raw.expected_answer,
+    correct: raw.correct,
+    latency_ms: raw.latency_ms,
+    created_at: raw.created_at,
+    settings_payload: normalizeSettings(raw.settings_payload),
+    synced: raw.synced
+  };
+}
+
 function normalizeSession(raw: Partial<SessionRecord>): SessionRecord {
   const now = new Date().toISOString();
   return {
@@ -28,7 +77,7 @@ function normalizeSession(raw: Partial<SessionRecord>): SessionRecord {
     ended_at: raw.ended_at ?? raw.started_at ?? now,
     duration_s: raw.duration_s ?? 0,
     mode: raw.mode ?? "square_color",
-    settings_payload: raw.settings_payload ?? null,
+    settings_payload: normalizeSettings(raw.settings_payload),
     status: raw.status ?? "completed",
     attempt_count: raw.attempt_count ?? 0,
     correct_count: raw.correct_count ?? 0,
@@ -37,7 +86,8 @@ function normalizeSession(raw: Partial<SessionRecord>): SessionRecord {
 }
 
 export function getAttempts(): AttemptRecord[] {
-  return loadFromStorage(ATTEMPTS_KEY, []);
+  const raw = loadFromStorage<Partial<AttemptRecord>[]>(ATTEMPTS_KEY, []);
+  return raw.map(normalizeAttempt).filter((attempt): attempt is AttemptRecord => attempt !== null);
 }
 
 export function saveAttempts(attempts: AttemptRecord[]): void {
