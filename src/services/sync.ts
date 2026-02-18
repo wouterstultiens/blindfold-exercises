@@ -44,6 +44,11 @@ export interface SyncResult {
   sessions: SessionRecord[];
 }
 
+export interface DeleteProgressResult {
+  deletedRemote: boolean;
+  message: string;
+}
+
 function parseSettings(payload: Record<string, unknown>): { pieceCount: number; ratingBucket: number } | null {
   const raw = payload.settings;
   if (!raw || typeof raw !== "object") {
@@ -229,5 +234,46 @@ export async function syncLocalProgress(payload: SyncPayload): Promise<SyncResul
     message: "Synced successfully.",
     attempts: (remoteAttempts ?? []).map((row) => fromDbAttempt(row as AttemptDbRow)),
     sessions: (remoteSessions ?? []).map((row) => fromDbSession(row as SessionDbRow))
+  };
+}
+
+export async function deleteAllProgressEverywhere(userId: string): Promise<DeleteProgressResult> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return {
+      deletedRemote: false,
+      message: "Supabase config missing. Cleared local data only."
+    };
+  }
+
+  if (userId.startsWith("guest-")) {
+    return {
+      deletedRemote: false,
+      message: "Guest profile has no cloud data. Cleared local data only."
+    };
+  }
+
+  const [{ error: attemptsError }, { error: sessionsError }] = await Promise.all([
+    client.from("attempts").delete().eq("user_id", userId),
+    client.from("sessions").delete().eq("user_id", userId)
+  ]);
+
+  if (attemptsError) {
+    return {
+      deletedRemote: false,
+      message: `Failed to delete cloud attempts: ${attemptsError.message}`
+    };
+  }
+
+  if (sessionsError) {
+    return {
+      deletedRemote: false,
+      message: `Failed to delete cloud sessions: ${sessionsError.message}`
+    };
+  }
+
+  return {
+    deletedRemote: true,
+    message: "Deleted cloud and local progress."
   };
 }

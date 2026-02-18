@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Dashboard } from "./components/Dashboard";
 import { ExerciseCard } from "./components/ExerciseCard";
+import { ProgressView } from "./components/ProgressView";
 import { createSquareColorItem, modeDisplayName } from "./engine/exercises";
 import {
   appendAttempt,
@@ -13,7 +13,7 @@ import {
 } from "./services/localDb";
 import { getNextPuzzle, getPuzzleCatalog, type PuzzleCatalog } from "./services/puzzleProvider";
 import { getSupabaseClient, hasSupabaseConfig, signInWithGitHub, signOut } from "./services/supabase";
-import { syncLocalProgress } from "./services/sync";
+import { deleteAllProgressEverywhere, syncLocalProgress } from "./services/sync";
 import type { AttemptRecord, ExerciseItem, ExerciseMode, PuzzleSettings, SessionRecord } from "./types";
 
 const GUEST_ID = "guest-local";
@@ -33,6 +33,7 @@ const DEFAULT_PUZZLE_SETTINGS: PuzzleSettings = {
   pieceCount: 5,
   ratingBucket: 1200
 };
+type AppTab = "training" | "progress";
 
 function createId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -115,9 +116,33 @@ function normalizeSettings(settings: PuzzleSettings, catalog: PuzzleCatalog): Pu
   };
 }
 
+async function enterBrowserFullscreen(): Promise<void> {
+  const target = document.documentElement as HTMLElement & { requestFullscreen?: () => Promise<void> };
+  if (document.fullscreenElement || !target.requestFullscreen) {
+    return;
+  }
+  try {
+    await target.requestFullscreen();
+  } catch {
+    // Ignore: browsers can deny fullscreen requests.
+  }
+}
+
+async function exitBrowserFullscreen(): Promise<void> {
+  if (!document.fullscreenElement) {
+    return;
+  }
+  try {
+    await document.exitFullscreen();
+  } catch {
+    // Ignore: exit failures should not block UI.
+  }
+}
+
 export default function App() {
   const [userId, setUserId] = useState<string>(GUEST_ID);
   const [displayName, setDisplayName] = useState<string>("Guest");
+  const [activeTab, setActiveTab] = useState<AppTab>("training");
   const [selectedMode, setSelectedMode] = useState<ExerciseMode>("square_color");
   const [puzzleCatalog, setPuzzleCatalog] = useState<PuzzleCatalog>(FALLBACK_CATALOG);
   const [puzzleSettings, setPuzzleSettings] = useState<PuzzleSettings>(DEFAULT_PUZZLE_SETTINGS);
@@ -132,11 +157,14 @@ export default function App() {
   const [isBootstrapped, setIsBootstrapped] = useState<boolean>(false);
   const [isCatalogLoading, setIsCatalogLoading] = useState<boolean>(true);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
   const cleanupBootRef = useRef<{ userId: string | null; startedAtMs: number }>({
     userId: null,
     startedAtMs: Date.now()
   });
   const syncingRef = useRef<boolean>(false);
+  const deletingRef = useRef<boolean>(false);
 
   useEffect(() => {
     setAllAttempts(getAttempts());
@@ -251,6 +279,8 @@ export default function App() {
   function stopExerciseRun(): void {
     setIsExerciseRunning(false);
     setCurrentItem(null);
+    setIsFocusMode(false);
+    void exitBrowserFullscreen();
   }
 
   function completeSession(session: SessionRecord): SessionRecord {
@@ -315,7 +345,7 @@ export default function App() {
   }
 
   async function syncNow(): Promise<void> {
-    if (syncingRef.current) {
+    if (syncingRef.current || deletingRef.current) {
       return;
     }
     const freshAttempts = getAttempts().filter((attempt) => attempt.user_id === userId);
@@ -536,6 +566,7 @@ export default function App() {
     }
     completeSession(activeSession);
     stopExerciseRun();
+    setActiveTab("training");
     setFeedback("Session ended.");
     if (userId !== GUEST_ID && navigator.onLine) {
       void syncNow();
@@ -545,8 +576,11 @@ export default function App() {
   async function startExercise(): Promise<void> {
     const settings = settingsForMode(selectedMode, puzzleSettings);
     ensureSession(selectedMode, settings);
+    setActiveTab("training");
     setFeedback("");
     setIsExerciseRunning(true);
+    setIsFocusMode(true);
+    void enterBrowserFullscreen();
     await loadNextItem(selectedMode, puzzleSettings);
   }
 
@@ -583,19 +617,47 @@ export default function App() {
     }
   }
 
-  function resetProgress(): void {
-    const confirmReset = window.confirm("Reset all local progress and cached puzzles?");
+  async function resetProgress(): Promise<void> {
+    if (deletingRef.current) {
+      return;
+    }
+
+    const confirmReset = window.confirm(
+      userId === GUEST_ID
+        ? "Reset all local progress and cached puzzles on this browser?"
+        : "Permanently delete all progress everywhere (cloud + this browser)? This cannot be undone."
+    );
     if (!confirmReset) {
       return;
     }
 
-    resetAllBlindfoldData();
-    setAllAttempts([]);
-    setAllSessions([]);
-    setActiveSession(null);
-    stopExerciseRun();
-    setFeedback("All local progress has been reset.");
-    setSyncMessage("Local data reset.");
+    deletingRef.current = true;
+    setIsDeleting(true);
+
+    try {
+      if (userId !== GUEST_ID) {
+        const result = await deleteAllProgressEverywhere(userId);
+        setSyncMessage(result.message);
+        if (!result.deletedRemote) {
+          setFeedback(result.message);
+          return;
+        }
+      }
+
+      resetAllBlindfoldData();
+      setAllAttempts([]);
+      setAllSessions([]);
+      setActiveSession(null);
+      stopExerciseRun();
+      setActiveTab("training");
+      setFeedback(userId === GUEST_ID ? "All local progress has been reset." : "All cloud and local progress has been deleted.");
+      if (userId === GUEST_ID) {
+        setSyncMessage("Local data reset.");
+      }
+    } finally {
+      deletingRef.current = false;
+      setIsDeleting(false);
+    }
   }
 
   if (!isBootstrapped) {
@@ -603,6 +665,11 @@ export default function App() {
   }
 
   const signedIn = userId !== GUEST_ID;
+  const canStart =
+    !isExerciseRunning &&
+    !isLoadingItem &&
+    !isDeleting &&
+    (selectedMode !== "puzzle_recall" || (!isCatalogLoading && availablePieceCounts.length > 0 && availableRatingBuckets.length > 0));
 
   return (
     <div className="app-shell">
@@ -625,121 +692,165 @@ export default function App() {
         </div>
       </header>
 
-      <main className="main-grid">
-        <section className="panel panel-training">
-          <h2>Training</h2>
-          <p className="muted">
-            Click Start to begin. Changing mode, piece count, or rating bucket ends the current run and requires Start again.
-          </p>
+      <nav className="tabbar" aria-label="App sections">
+        <button type="button" className={`tab-btn ${activeTab === "training" ? "active" : ""}`} onClick={() => setActiveTab("training")}>
+          Training
+        </button>
+        <button type="button" className={`tab-btn ${activeTab === "progress" ? "active" : ""}`} onClick={() => setActiveTab("progress")}>
+          Progress
+        </button>
+      </nav>
 
-          <div className="controls">
-            <label className="field">
-              <span>Mode</span>
-              <select value={selectedMode} onChange={(event) => handleModeChange(event.target.value as ExerciseMode)}>
-                <option value="square_color">{modeDisplayName("square_color")}</option>
-                <option value="puzzle_recall">{modeDisplayName("puzzle_recall")}</option>
-              </select>
-            </label>
-
-            {selectedMode === "puzzle_recall" ? (
-              <>
-                <label className="field">
-                  <span>Piece Count</span>
-                  <select
-                    value={puzzleSettings.pieceCount}
-                    onChange={(event) => handlePieceCountChange(Number(event.target.value))}
-                    disabled={isCatalogLoading}
-                  >
-                    {availablePieceCounts.map((pieceCount) => (
-                      <option key={pieceCount} value={pieceCount}>
-                        {pieceCount}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="field">
-                  <span>Rating Bucket</span>
-                  <select
-                    value={puzzleSettings.ratingBucket}
-                    onChange={(event) => handleRatingBucketChange(Number(event.target.value))}
-                    disabled={isCatalogLoading}
-                  >
-                    {availableRatingBuckets.map((bucket) => (
-                      <option key={bucket} value={bucket}>
-                        {bucket}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </>
-            ) : null}
-
-            <button
-              type="button"
-              className="btn primary"
-              onClick={() => {
-                void startExercise();
-              }}
-              disabled={
-                isExerciseRunning ||
-                isLoadingItem ||
-                (selectedMode === "puzzle_recall" && (isCatalogLoading || availablePieceCounts.length === 0 || availableRatingBuckets.length === 0))
-              }
-            >
-              Start
-            </button>
-            <button type="button" className="btn secondary" onClick={endSession} disabled={!activeSession}>
-              End Session
-            </button>
-            <button
-              type="button"
-              className="btn secondary"
-              onClick={() => {
-                void syncNow();
-              }}
-              disabled={isSyncing}
-            >
-              {isSyncing ? "Syncing..." : "Sync Now"}
-            </button>
-            <button type="button" className="btn danger" onClick={resetProgress}>
-              Reset Local Data
-            </button>
-          </div>
-
-          <p className="muted">{syncMessage}</p>
-          {activeSession ? (
+      {activeTab === "training" ? (
+        <main className="main-training">
+          <section className="panel panel-training">
+            <h2>Training</h2>
             <p className="muted">
-              Active session: {modeDisplayName(activeSession.mode)}
-              {activeSession.settings_payload ? ` | ${formatPuzzleSettings(activeSession.settings_payload)}` : ""}
+              Click Start to begin. Changing mode, piece count, or rating bucket ends the current run and requires Start again.
             </p>
-          ) : (
-            <p className="muted">No active session right now.</p>
-          )}
-          {feedback ? <p className="feedback">{feedback}</p> : null}
 
-          {isCatalogLoading && selectedMode === "puzzle_recall" ? <p className="muted">Loading puzzle catalog...</p> : null}
-          {isLoadingItem && isExerciseRunning ? <p className="muted">Loading next exercise...</p> : null}
+            <div className="controls">
+              <label className="field">
+                <span>Mode</span>
+                <select value={selectedMode} onChange={(event) => handleModeChange(event.target.value as ExerciseMode)}>
+                  <option value="square_color">{modeDisplayName("square_color")}</option>
+                  <option value="puzzle_recall">{modeDisplayName("puzzle_recall")}</option>
+                </select>
+              </label>
 
-          {isExerciseRunning && currentItem ? (
-            <ExerciseCard
-              item={currentItem}
-              attemptsInSession={activeSession?.attempt_count ?? 0}
-              disabled={isLoadingItem}
-              onSquareSubmit={(answer, latencyMs, evaluation) => {
-                void handleSquareSubmit(answer, latencyMs, evaluation);
-              }}
-              onPuzzleSubmit={(correct, latencyMs) => {
-                void handlePuzzleSubmit(correct, latencyMs);
-              }}
-            />
-          ) : (
-            <p className="muted">Press Start to begin.</p>
-          )}
+              {selectedMode === "puzzle_recall" ? (
+                <>
+                  <label className="field">
+                    <span>Piece Count</span>
+                    <select
+                      value={puzzleSettings.pieceCount}
+                      onChange={(event) => handlePieceCountChange(Number(event.target.value))}
+                      disabled={isCatalogLoading}
+                    >
+                      {availablePieceCounts.map((pieceCount) => (
+                        <option key={pieceCount} value={pieceCount}>
+                          {pieceCount}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="field">
+                    <span>Rating Bucket</span>
+                    <select
+                      value={puzzleSettings.ratingBucket}
+                      onChange={(event) => handleRatingBucketChange(Number(event.target.value))}
+                      disabled={isCatalogLoading}
+                    >
+                      {availableRatingBuckets.map((bucket) => (
+                        <option key={bucket} value={bucket}>
+                          {bucket}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              ) : null}
+
+              <button
+                type="button"
+                className="btn primary"
+                onClick={() => {
+                  void startExercise();
+                }}
+                disabled={!canStart}
+              >
+                Start
+              </button>
+              <button type="button" className="btn secondary" onClick={endSession} disabled={!activeSession || isDeleting}>
+                End Session
+              </button>
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() => {
+                  void syncNow();
+                }}
+                disabled={isSyncing || isDeleting}
+              >
+                {isSyncing ? "Syncing..." : "Sync Now"}
+              </button>
+              <button
+                type="button"
+                className="btn danger"
+                onClick={() => {
+                  void resetProgress();
+                }}
+                disabled={isDeleting || isSyncing}
+              >
+                {isDeleting ? "Deleting..." : signedIn ? "Delete Data Everywhere" : "Reset Local Data"}
+              </button>
+            </div>
+
+            <p className="muted">{syncMessage}</p>
+            {activeSession ? (
+              <p className="muted">
+                Active session: {modeDisplayName(activeSession.mode)}
+                {activeSession.settings_payload ? ` | ${formatPuzzleSettings(activeSession.settings_payload)}` : ""}
+              </p>
+            ) : (
+              <p className="muted">No active session right now.</p>
+            )}
+            {feedback ? <p className="feedback">{feedback}</p> : null}
+
+            {isCatalogLoading && selectedMode === "puzzle_recall" ? <p className="muted">Loading puzzle catalog...</p> : null}
+            {isLoadingItem && isExerciseRunning ? <p className="muted">Loading next exercise...</p> : null}
+            {!isFocusMode && isExerciseRunning && currentItem ? (
+              <ExerciseCard
+                item={currentItem}
+                attemptsInSession={activeSession?.attempt_count ?? 0}
+                disabled={isLoadingItem || isDeleting}
+                onSquareSubmit={(answer, latencyMs, evaluation) => {
+                  void handleSquareSubmit(answer, latencyMs, evaluation);
+                }}
+                onPuzzleSubmit={(correct, latencyMs) => {
+                  void handlePuzzleSubmit(correct, latencyMs);
+                }}
+              />
+            ) : null}
+            {!isExerciseRunning ? <p className="muted">Press Start to begin.</p> : null}
+          </section>
+        </main>
+      ) : (
+        <main className="main-progress">
+          <ProgressView attempts={attempts} sessions={sessions} />
+        </main>
+      )}
+
+      {isFocusMode && isExerciseRunning ? (
+        <section className="focus-overlay" aria-label="Focused training">
+          <div className="focus-shell">
+            <div className="focus-top">
+              <p className="muted">Focused mode</p>
+              <button type="button" className="btn secondary" onClick={endSession} disabled={!activeSession || isDeleting}>
+                Stop
+              </button>
+            </div>
+
+            {feedback ? <p className="feedback">{feedback}</p> : null}
+            {isLoadingItem || !currentItem ? (
+              <p className="muted">Loading next exercise...</p>
+            ) : (
+              <ExerciseCard
+                item={currentItem}
+                attemptsInSession={activeSession?.attempt_count ?? 0}
+                disabled={isLoadingItem || isDeleting}
+                onSquareSubmit={(answer, latencyMs, evaluation) => {
+                  void handleSquareSubmit(answer, latencyMs, evaluation);
+                }}
+                onPuzzleSubmit={(correct, latencyMs) => {
+                  void handlePuzzleSubmit(correct, latencyMs);
+                }}
+              />
+            )}
+          </div>
         </section>
-
-        <Dashboard attempts={attempts} sessions={sessions} />
-      </main>
+      ) : null}
     </div>
   );
 }

@@ -32,9 +32,17 @@
   - balance motifs per combo (limit over-dominant motifs)
   - support `--max-rows` for tiny fast iteration runs
 - Progress reporting includes combo stats per `(pieceCount, ratingBucket)`.
+- UI layout:
+  - separate `Training` and `Progress` tabs
+  - `Progress` tab includes trailing 20-exercise moving-average graphs (accuracy + avg response time), capped to latest 1000 points
+  - Progress trends can be filtered per exercise/category (`square_color` and puzzle `(pieceCount, ratingBucket)` categories)
 - Session lifecycle:
   - starts only when user clicks `Start`
-  - closes on explicit end or when mode/settings change
+  - enters focused fullscreen-style exercise view while running
+  - closes on explicit end/stop or when mode/settings change
+- Data reset behavior:
+  - guest: local-only reset
+  - signed-in: delete attempts/sessions in Supabase first, then clear local
 - No secrets in `docs/`.
 
 ## Project Structure
@@ -55,7 +63,8 @@
 |   |-- components/
 |   |   |-- BoardView.tsx
 |   |   |-- Dashboard.tsx
-|   |   `-- ExerciseCard.tsx
+|   |   |-- ExerciseCard.tsx
+|   |   `-- ProgressView.tsx
 |   |-- engine/
 |   |   |-- exercises.ts
 |   |   `-- session.ts

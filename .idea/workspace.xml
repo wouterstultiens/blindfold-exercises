@@ -6,36 +6,13 @@
   <component name="ChangeListManager">
     <list default="true" id="cee287c5-f381-4037-8505-a57fadbaf68d" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/docs/CONTEXT.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/CONTEXT.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/docs/JOURNAL.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/JOURNAL.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/public/puzzles/build-state.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/public/puzzles/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/public/puzzles/manifest.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/public/puzzles/r1300.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/public/puzzles/r1700.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/public/puzzles/r2500.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/public/puzzles/r700.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/public/puzzles/r800.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/public/puzzles/r900.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/build_tablebase_puzzles.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/download_syzygy.py" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/App.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/BoardView.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/BoardView.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/Dashboard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/Dashboard.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/ExerciseCard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/ExerciseCard.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/engine/session.test.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/engine/session.test.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/engine/session.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/engine/session.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/services/localDb.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/services/localDb.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/services/puzzleProvider.flow.test.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/services/puzzleProvider.flow.test.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/services/puzzleProvider.functionFallback.test.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/services/puzzleProvider.functionFallback.test.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/services/puzzleProvider.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/services/puzzleProvider.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/services/sync.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/services/sync.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/styles.css" beforeDir="false" afterPath="$PROJECT_DIR$/src/styles.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/types.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/puzzle-fetch/index.ts" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/schema.sql" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/schema.sql" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

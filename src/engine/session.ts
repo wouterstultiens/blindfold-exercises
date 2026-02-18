@@ -32,6 +32,24 @@ export interface SessionSummaryRow {
   accuracy: number;
 }
 
+export interface SessionTrendPoint {
+  sessionId: string;
+  sessionIndex: number;
+  endedAt: string;
+  attemptCount: number;
+  accuracyPercent: number;
+  avgLatencySeconds: number;
+}
+
+export interface AttemptMovingAveragePoint {
+  attemptId: string;
+  attemptNumber: number;
+  createdAt: string;
+  windowSize: number;
+  accuracyPercent: number;
+  avgLatencySeconds: number;
+}
+
 export function summarizeSessions(sessions: SessionRecord[], attempts: AttemptRecord[]): SessionSummaryRow[] {
   const attemptsBySession = new Map<string, AttemptRecord[]>();
   for (const attempt of attempts) {
@@ -49,6 +67,85 @@ export function summarizeSessions(sessions: SessionRecord[], attempts: AttemptRe
       return { session: { ...session, attempt_count: rows.length, correct_count: correct }, accuracy };
     })
     .sort((a, b) => Date.parse(b.session.ended_at) - Date.parse(a.session.ended_at));
+}
+
+export function buildSessionTrend(sessions: SessionRecord[], attempts: AttemptRecord[]): SessionTrendPoint[] {
+  const attemptsBySession = new Map<string, AttemptRecord[]>();
+  for (const attempt of attempts) {
+    const rows = attemptsBySession.get(attempt.session_id) ?? [];
+    rows.push(attempt);
+    attemptsBySession.set(attempt.session_id, rows);
+  }
+
+  const completed = sessions
+    .filter((session) => session.status === "completed")
+    .sort((a, b) => Date.parse(a.ended_at) - Date.parse(b.ended_at));
+
+  return completed.map((session, index) => {
+    const rows = attemptsBySession.get(session.id) ?? [];
+    const correct = rows.filter((row) => row.correct).length;
+    const accuracyPercent = rows.length === 0 ? 0 : (correct / rows.length) * 100;
+    const avgLatencyMs = rows.length === 0 ? 0 : rows.reduce((sum, row) => sum + row.latency_ms, 0) / rows.length;
+
+    return {
+      sessionId: session.id,
+      sessionIndex: index + 1,
+      endedAt: session.ended_at,
+      attemptCount: rows.length,
+      accuracyPercent,
+      avgLatencySeconds: Number((avgLatencyMs / 1000).toFixed(2))
+    };
+  });
+}
+
+export function buildAttemptMovingAverageTrend(
+  attempts: AttemptRecord[],
+  windowSize = 20,
+  maxPoints?: number
+): AttemptMovingAveragePoint[] {
+  const safeWindow = Math.max(1, Math.floor(windowSize));
+  const safeMaxPoints =
+    typeof maxPoints === "number" && Number.isFinite(maxPoints) && maxPoints > 0 ? Math.floor(maxPoints) : null;
+  const sorted = [...attempts].sort(
+    (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id.localeCompare(b.id)
+  );
+
+  const trend: AttemptMovingAveragePoint[] = [];
+  let rollingCorrect = 0;
+  let rollingLatencyMs = 0;
+
+  for (let index = 0; index < sorted.length; index += 1) {
+    const current = sorted[index];
+    if (!current) {
+      continue;
+    }
+    rollingCorrect += current.correct ? 1 : 0;
+    rollingLatencyMs += current.latency_ms;
+
+    if (index >= safeWindow) {
+      const outgoing = sorted[index - safeWindow];
+      if (outgoing) {
+        rollingCorrect -= outgoing.correct ? 1 : 0;
+        rollingLatencyMs -= outgoing.latency_ms;
+      }
+    }
+
+    if (index >= safeWindow - 1) {
+      trend.push({
+        attemptId: current.id,
+        attemptNumber: index + 1,
+        createdAt: current.created_at,
+        windowSize: safeWindow,
+        accuracyPercent: (rollingCorrect / safeWindow) * 100,
+        avgLatencySeconds: Number((rollingLatencyMs / safeWindow / 1000).toFixed(2))
+      });
+    }
+  }
+
+  if (!safeMaxPoints || trend.length <= safeMaxPoints) {
+    return trend;
+  }
+  return trend.slice(-safeMaxPoints);
 }
 
 export function puzzleComboStats(attempts: AttemptRecord[]): PuzzleComboStat[] {
