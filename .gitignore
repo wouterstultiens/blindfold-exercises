@@ -12,3 +12,4 @@ lichess_db_puzzle.csv.zst
 .artifacts/
 playwright-report/
 test-results/
+docs/
