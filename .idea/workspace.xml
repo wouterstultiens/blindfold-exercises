@@ -4,7 +4,15 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="cee287c5-f381-4037-8505-a57fadbaf68d" name="Changes" comment="" />
+    <list default="true" id="cee287c5-f381-4037-8505-a57fadbaf68d" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/CONTEXT.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/CONTEXT.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/JOURNAL.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/JOURNAL.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/App.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/components/ProgressView.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/ProgressView.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/styles.css" beforeDir="false" afterPath="$PROJECT_DIR$/src/styles.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/types.ts" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -59,6 +67,9 @@
       <recent name="$PROJECT_DIR$" />
       <recent name="C:\Users\woute\OneDrive\Online Documenten\Python Projects\BlindfoldExercises" />
     </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\woute\OneDrive\Online Documenten\Python Projects\BlindfoldExercises\docs\design" />
+    </key>
   </component>
   <component name="RunManager">
     <configuration name="puzzles:build -- --max-pieces 6" type="js.build_tools.npm" temporary="true" nameIsGenerated="true">
@@ -76,7 +87,8 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-python-sdk-4e2b1448bda8-9a97661f3031-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-252.27397.106" />
+        <option value="bundled-js-predefined-d6986cc7102b-9b0f141eb926-JavaScript-PY-253.30387.127" />
+        <option value="bundled-python-sdk-3944b0c99280-6d6dccd035ac-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-253.30387.127" />
       </set>
     </attachedChunks>
   </component>
@@ -91,6 +103,7 @@
       <workItem from="1771344802141" duration="30000" />
       <workItem from="1771350853297" duration="9332000" />
       <workItem from="1771361682492" duration="2361000" />
+      <workItem from="1771485894509" duration="3072000" />
     </task>
     <servers />
   </component>
@@ -102,6 +115,10 @@
         <option value="$PROJECT_DIR$/vite.config.js" />
       </list>
     </option>
+  </component>
+  <component name="UnknownFeatures">
+    <option featureType="dependencySupport" implementationName="javascript:npm:react" />
+    <option featureType="dependencySupport" implementationName="javascript:npm:vite" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

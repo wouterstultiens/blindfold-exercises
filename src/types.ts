@@ -1,4 +1,5 @@
 export type ExerciseMode = "square_color" | "puzzle_recall";
+export type AppTab = "training" | "progress";
 
 export interface PuzzleSettings {
   pieceCount: number;
@@ -66,4 +67,23 @@ export interface PuzzleComboStat {
   ratingBucket: number;
   attempts: number;
   correctPercent: number;
+}
+
+export interface RunMetrics {
+  attempts: number;
+  accuracyPercent: number;
+  streak: number;
+  avgLatencyMs: number;
+}
+
+export interface TrainingUiStateSurface {
+  isBootstrapped: boolean;
+  isCatalogLoading: boolean;
+  isLoadingItem: boolean;
+  isSyncing: boolean;
+  isDeleting: boolean;
+  isFocusedRun: boolean;
+  isExerciseRunning: boolean;
+  hasActiveSession: boolean;
+  isOffline: boolean;
 }

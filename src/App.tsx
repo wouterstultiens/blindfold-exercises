@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ExerciseCard } from "./components/ExerciseCard";
+import { FocusedTrainingOverlay } from "./components/FocusedTrainingOverlay";
 import { ProgressView } from "./components/ProgressView";
+import { RunStatusPanel } from "./components/RunStatusPanel";
+import { TabNav } from "./components/TabNav";
+import { TopBar } from "./components/TopBar";
+import { TrainingSetupPanel } from "./components/TrainingSetupPanel";
 import { createSquareColorItem, modeDisplayName } from "./engine/exercises";
 import {
   appendAttempt,
@@ -14,7 +18,15 @@ import {
 import { getNextPuzzle, getPuzzleCatalog, type PuzzleCatalog } from "./services/puzzleProvider";
 import { getSupabaseClient, hasSupabaseConfig, signInWithGitHub, signOut } from "./services/supabase";
 import { deleteAllProgressEverywhere, syncLocalProgress } from "./services/sync";
-import type { AttemptRecord, ExerciseItem, ExerciseMode, PuzzleSettings, SessionRecord } from "./types";
+import type {
+  AppTab,
+  AttemptRecord,
+  ExerciseItem,
+  ExerciseMode,
+  PuzzleSettings,
+  SessionRecord,
+  TrainingUiStateSurface
+} from "./types";
 
 const GUEST_ID = "guest-local";
 const FALLBACK_CATALOG: PuzzleCatalog = {
@@ -33,7 +45,6 @@ const DEFAULT_PUZZLE_SETTINGS: PuzzleSettings = {
   pieceCount: 5,
   ratingBucket: 1200
 };
-type AppTab = "training" | "progress";
 
 function createId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -93,7 +104,8 @@ function formatPuzzleSettings(settings: PuzzleSettings | null): string {
 function currentStreak(attempts: AttemptRecord[]): number {
   let streak = 0;
   for (let index = attempts.length - 1; index >= 0; index -= 1) {
-    if (!attempts[index].correct) {
+    const attempt = attempts[index];
+    if (!attempt || !attempt.correct) {
       break;
     }
     streak += 1;
@@ -150,61 +162,6 @@ async function exitBrowserFullscreen(): Promise<void> {
   }
 }
 
-interface SessionMomentumProps {
-  modeLabel: string;
-  settingsLabel: string | null;
-  attempts: number;
-  accuracyPercent: number;
-  streak: number;
-  avgLatencyMs: number;
-  focused?: boolean;
-}
-
-function SessionMomentum({
-  modeLabel,
-  settingsLabel,
-  attempts,
-  accuracyPercent,
-  streak,
-  avgLatencyMs,
-  focused = false
-}: SessionMomentumProps) {
-  const momentumProgress = Math.min(100, Math.max(8, Math.round((attempts / 24) * 100)));
-
-  return (
-    <aside className={`session-momentum${focused ? " focused" : ""}`} data-testid="session-momentum">
-      <div className="session-momentum-head">
-        <p className="kicker">Run Momentum</p>
-        <p className="muted">
-          {modeLabel}
-          {settingsLabel ? ` | ${settingsLabel}` : ""}
-        </p>
-      </div>
-      <div className="momentum-metrics">
-        <div className="momentum-metric">
-          <span className="label">Attempts</span>
-          <span className="value">{attempts}</span>
-        </div>
-        <div className="momentum-metric">
-          <span className="label">Accuracy</span>
-          <span className="value">{attempts > 0 ? `${accuracyPercent}%` : "-"}</span>
-        </div>
-        <div className="momentum-metric streak">
-          <span className="label">Streak</span>
-          <span className="value">{streak}</span>
-        </div>
-        <div className="momentum-metric">
-          <span className="label">Avg Time</span>
-          <span className="value">{attempts > 0 ? `${(avgLatencyMs / 1000).toFixed(1)}s` : "-"}</span>
-        </div>
-      </div>
-      <div className="momentum-track" aria-hidden="true">
-        <span style={{ width: `${momentumProgress}%` }} />
-      </div>
-    </aside>
-  );
-}
-
 export default function App() {
   const [userId, setUserId] = useState<string>(GUEST_ID);
   const [displayName, setDisplayName] = useState<string>("Guest");
@@ -225,6 +182,7 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
+  const [isOffline, setIsOffline] = useState<boolean>(typeof navigator !== "undefined" ? !navigator.onLine : false);
   const cleanupBootRef = useRef<{ userId: string | null; startedAtMs: number }>({
     userId: null,
     startedAtMs: Date.now()
@@ -235,6 +193,17 @@ export default function App() {
   useEffect(() => {
     setAllAttempts(getAttempts());
     setAllSessions(getSessions());
+  }, []);
+
+  useEffect(() => {
+    const updateOnlineState = () => setIsOffline(!navigator.onLine);
+    updateOnlineState();
+    window.addEventListener("online", updateOnlineState);
+    window.addEventListener("offline", updateOnlineState);
+    return () => {
+      window.removeEventListener("online", updateOnlineState);
+      window.removeEventListener("offline", updateOnlineState);
+    };
   }, []);
 
   useEffect(() => {
@@ -591,7 +560,7 @@ export default function App() {
     appendAttempt(attempt);
     setAllAttempts((previous) => [...previous, attempt]);
     updateSessionAfterAttempt(session, evaluation.correct);
-    setFeedback(evaluation.correct ? "Correct" : `Incorrect. Expected ${evaluation.expected}`);
+    setFeedback(evaluation.correct ? "Correct." : `Incorrect. Expected ${evaluation.expected}.`);
 
     await loadNextItem("square_color", puzzleSettings);
     if (userId !== GUEST_ID && navigator.onLine) {
@@ -752,234 +721,100 @@ export default function App() {
     !isLoadingItem &&
     !isDeleting &&
     (selectedMode !== "puzzle_recall" || (!isCatalogLoading && availablePieceCounts.length > 0 && availableRatingBuckets.length > 0));
+  const runMetrics = {
+    attempts: activeSessionAttempts.length,
+    accuracyPercent: activeAccuracyPercent,
+    streak: activeStreak,
+    avgLatencyMs: activeAvgLatencyMs
+  };
+  const activeSessionSummary = activeSession
+    ? `${modeDisplayName(activeSession.mode)}${activeSession.settings_payload ? ` | ${formatPuzzleSettings(activeSession.settings_payload)}` : ""}`
+    : null;
+  const trainingUiState: TrainingUiStateSurface = {
+    isBootstrapped,
+    isCatalogLoading,
+    isLoadingItem,
+    isSyncing,
+    isDeleting,
+    isFocusedRun: isFocusMode,
+    isExerciseRunning,
+    hasActiveSession: Boolean(activeSession),
+    isOffline
+  };
 
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <div>
-          <h1>Blindfold Chess Trainer</h1>
-          <p className="muted">Minimal distraction drills: Square Color and static Lichess Puzzle Recall.</p>
-        </div>
-        <div className="top-actions">
-          <span className="pill">{signedIn ? `Signed in as ${displayName}` : "Guest mode"}</span>
-          {signedIn ? (
-            <button type="button" className="btn secondary" onClick={() => signOut()}>
-              Sign out
-            </button>
-          ) : (
-            <button type="button" className="btn secondary" disabled={!hasSupabaseConfig()} onClick={() => signInWithGitHub()}>
-              Sign in with GitHub
-            </button>
-          )}
-        </div>
-      </header>
+      <TopBar
+        signedIn={signedIn}
+        displayName={displayName}
+        canUseAuth={hasSupabaseConfig()}
+        onSignIn={() => {
+          void signInWithGitHub().catch((error) => {
+            setFeedback(error instanceof Error ? error.message : "Unable to sign in.");
+          });
+        }}
+        onSignOut={() => {
+          void signOut().catch((error) => {
+            setFeedback(error instanceof Error ? error.message : "Unable to sign out.");
+          });
+        }}
+      />
 
-      <nav className="tabbar" aria-label="App sections">
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === "training" ? "active" : ""}`}
-          data-testid="training-tab"
-          onClick={() => setActiveTab("training")}
-        >
-          Training
-        </button>
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === "progress" ? "active" : ""}`}
-          data-testid="progress-tab"
-          onClick={() => setActiveTab("progress")}
-        >
-          Progress
-        </button>
-      </nav>
+      <TabNav activeTab={activeTab} onChange={setActiveTab} />
 
       {activeTab === "training" ? (
         <main className="main-training">
-          <section className="panel panel-training">
-            <h2>Training</h2>
-            <p className="muted">
-              Click Start to begin. Changing mode, piece count, or rating bucket ends the current run and requires Start again.
-            </p>
+          <TrainingSetupPanel
+            selectedMode={selectedMode}
+            puzzleSettings={puzzleSettings}
+            availablePieceCounts={availablePieceCounts}
+            availableRatingBuckets={availableRatingBuckets}
+            canStart={canStart}
+            signedIn={signedIn}
+            syncMessage={syncMessage}
+            feedback={feedback}
+            activeSessionSummary={activeSessionSummary}
+            uiState={trainingUiState}
+            onModeChange={handleModeChange}
+            onPieceCountChange={handlePieceCountChange}
+            onRatingBucketChange={handleRatingBucketChange}
+            onStart={() => {
+              void startExercise();
+            }}
+            onEndSession={endSession}
+            onSyncNow={() => {
+              void syncNow();
+            }}
+            onReset={() => {
+              void resetProgress();
+            }}
+          />
 
-            <div className="controls">
-              <label className="field">
-                <span>Mode</span>
-                <select value={selectedMode} onChange={(event) => handleModeChange(event.target.value as ExerciseMode)}>
-                  <option value="square_color">{modeDisplayName("square_color")}</option>
-                  <option value="puzzle_recall">{modeDisplayName("puzzle_recall")}</option>
-                </select>
-              </label>
-
-              {selectedMode === "puzzle_recall" ? (
-                <>
-                  <label className="field">
-                    <span>Piece Count</span>
-                    <select
-                      value={puzzleSettings.pieceCount}
-                      onChange={(event) => handlePieceCountChange(Number(event.target.value))}
-                      disabled={isCatalogLoading}
-                    >
-                      {availablePieceCounts.map((pieceCount) => (
-                        <option key={pieceCount} value={pieceCount}>
-                          {pieceCount}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="field">
-                    <span>Rating Bucket</span>
-                    <select
-                      value={puzzleSettings.ratingBucket}
-                      onChange={(event) => handleRatingBucketChange(Number(event.target.value))}
-                      disabled={isCatalogLoading}
-                    >
-                      {availableRatingBuckets.map((bucket) => (
-                        <option key={bucket} value={bucket}>
-                          {bucket}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </>
-              ) : null}
-
-              <button
-                type="button"
-                className="btn primary"
-                data-testid="start-session-btn"
-                onClick={() => {
-                  void startExercise();
-                }}
-                disabled={!canStart}
-              >
-                Start
-              </button>
-              <button
-                type="button"
-                className="btn secondary"
-                data-testid="end-session-btn"
-                onClick={endSession}
-                disabled={!activeSession || isDeleting}
-              >
-                End Session
-              </button>
-              <button
-                type="button"
-                className="btn secondary"
-                onClick={() => {
-                  void syncNow();
-                }}
-                disabled={isSyncing || isDeleting}
-              >
-                {isSyncing ? "Syncing..." : "Sync Now"}
-              </button>
-              <button
-                type="button"
-                className="btn danger"
-                onClick={() => {
-                  void resetProgress();
-                }}
-                disabled={isDeleting || isSyncing}
-              >
-                {isDeleting ? "Deleting..." : signedIn ? "Delete Data Everywhere" : "Reset Local Data"}
-              </button>
-            </div>
-
-            {activeSession && !isFocusMode ? (
-              <SessionMomentum
-                modeLabel={modeDisplayName(activeSession.mode)}
-                settingsLabel={activeSession.settings_payload ? formatPuzzleSettings(activeSession.settings_payload) : null}
-                attempts={activeSessionAttempts.length}
-                accuracyPercent={activeAccuracyPercent}
-                streak={activeStreak}
-                avgLatencyMs={activeAvgLatencyMs}
-              />
-            ) : null}
-
-            <p className="muted">{syncMessage}</p>
-            {activeSession ? (
-              <p className="muted">
-                Active session: {modeDisplayName(activeSession.mode)}
-                {activeSession.settings_payload ? ` | ${formatPuzzleSettings(activeSession.settings_payload)}` : ""}
-              </p>
-            ) : (
-              <p className="muted">No active session right now.</p>
-            )}
-            {feedback ? <p className="feedback">{feedback}</p> : null}
-
-            {isCatalogLoading && selectedMode === "puzzle_recall" ? <p className="muted">Loading puzzle catalog...</p> : null}
-            {isLoadingItem && isExerciseRunning ? <p className="muted">Loading next exercise...</p> : null}
-            {!isFocusMode && isExerciseRunning && currentItem ? (
-              <ExerciseCard
-                item={currentItem}
-                attemptsInSession={activeSession?.attempt_count ?? 0}
-                disabled={isLoadingItem || isDeleting}
-                onSquareSubmit={(answer, latencyMs, evaluation) => {
-                  void handleSquareSubmit(answer, latencyMs, evaluation);
-                }}
-                onPuzzleSubmit={(correct, latencyMs) => {
-                  void handlePuzzleSubmit(correct, latencyMs);
-                }}
-              />
-            ) : null}
-            {!isExerciseRunning ? <p className="muted">Press Start to begin.</p> : null}
-          </section>
+          <RunStatusPanel activeSession={activeSession} metrics={runMetrics} />
         </main>
       ) : (
         <main className="main-progress">
-          <ProgressView attempts={attempts} sessions={sessions} />
+          <ProgressView attempts={attempts} sessions={sessions} defaultExerciseMode={selectedMode} />
         </main>
       )}
 
-      {isFocusMode && isExerciseRunning ? (
-        <section className="focus-overlay" data-testid="focused-overlay" aria-label="Focused training">
-          <div className="focus-shell">
-            <div className="focus-top">
-              <p className="muted">Focused mode</p>
-              <button
-                type="button"
-                className="btn secondary"
-                data-testid="stop-session-btn"
-                onClick={endSession}
-                disabled={!activeSession || isDeleting}
-              >
-                Stop
-              </button>
-            </div>
-
-            {isLoadingItem || !currentItem ? (
-              <p className="muted">Loading next exercise...</p>
-            ) : (
-              <>
-                {activeSession ? (
-                  <SessionMomentum
-                    modeLabel={modeDisplayName(activeSession.mode)}
-                    settingsLabel={activeSession.settings_payload ? formatPuzzleSettings(activeSession.settings_payload) : null}
-                    attempts={activeSessionAttempts.length}
-                    accuracyPercent={activeAccuracyPercent}
-                    streak={activeStreak}
-                    avgLatencyMs={activeAvgLatencyMs}
-                    focused
-                  />
-                ) : null}
-                <ExerciseCard
-                  item={currentItem}
-                  attemptsInSession={activeSession?.attempt_count ?? 0}
-                  disabled={isLoadingItem || isDeleting}
-                  focused
-                  onSquareSubmit={(answer, latencyMs, evaluation) => {
-                    void handleSquareSubmit(answer, latencyMs, evaluation);
-                  }}
-                  onPuzzleSubmit={(correct, latencyMs) => {
-                    void handlePuzzleSubmit(correct, latencyMs);
-                  }}
-                />
-              </>
-            )}
-          </div>
-        </section>
-      ) : null}
+      <FocusedTrainingOverlay
+        visible={isFocusMode && isExerciseRunning}
+        isLoadingItem={isLoadingItem}
+        isDeleting={isDeleting}
+        isSyncing={isSyncing}
+        isOffline={isOffline}
+        currentItem={currentItem}
+        activeSession={activeSession}
+        metrics={runMetrics}
+        onStop={endSession}
+        onSquareSubmit={(answer, latencyMs, evaluation) => {
+          void handleSquareSubmit(answer, latencyMs, evaluation);
+        }}
+        onPuzzleSubmit={(correct, latencyMs) => {
+          void handlePuzzleSubmit(correct, latencyMs);
+        }}
+      />
     </div>
   );
 }

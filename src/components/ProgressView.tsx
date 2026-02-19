@@ -6,6 +6,7 @@ import { Dashboard } from "./Dashboard";
 interface ProgressViewProps {
   attempts: AttemptRecord[];
   sessions: SessionRecord[];
+  defaultExerciseMode?: ExerciseMode;
 }
 
 interface TrendLineChartProps {
@@ -150,11 +151,15 @@ function TrendLineChart({
   );
 }
 
-export function ProgressView({ attempts, sessions }: ProgressViewProps) {
+export function ProgressView({ attempts, sessions, defaultExerciseMode = "square_color" }: ProgressViewProps) {
   const movingAverageWindow = 20;
   const maxVisiblePoints = 1000;
-  const [selectedExercise, setSelectedExercise] = useState<ExerciseMode>("square_color");
+  const [selectedExercise, setSelectedExercise] = useState<ExerciseMode>(defaultExerciseMode);
   const [selectedPuzzleCategory, setSelectedPuzzleCategory] = useState<string>(ALL_PUZZLE_CATEGORIES);
+
+  useEffect(() => {
+    setSelectedExercise(defaultExerciseMode);
+  }, [defaultExerciseMode]);
 
   const puzzleCategories = useMemo<PuzzleCategoryOption[]>(() => {
     const buckets = new Map<string, { pieceCount: number; ratingBucket: number; attempts: number }>();
@@ -221,7 +226,10 @@ export function ProgressView({ attempts, sessions }: ProgressViewProps) {
   const speedValues = trend.map((point) => point.avgLatencySeconds);
   const maxSpeed = speedValues.reduce((max, value) => Math.max(max, value), 0);
   const firstExerciseNumber = trend[0]?.attemptNumber ?? movingAverageWindow;
-  const emptyMessage = `Complete at least ${movingAverageWindow} exercises in this category to render this trend.`;
+  const emptyMessage =
+    filteredAttempts.length === 0
+      ? "No attempts in this context yet. Train this category to start a trend."
+      : `Complete at least ${movingAverageWindow} exercises in this category to render this trend.`;
   const selectedCategoryLabel =
     selectedExercise === "square_color"
       ? "Square Color"
@@ -270,6 +278,7 @@ export function ProgressView({ attempts, sessions }: ProgressViewProps) {
           </label>
         ) : null}
         <div className="progress-summary-strip">
+          <span className="pill">Selected context</span>
           <span className="pill">{selectedCategoryLabel}</span>
           <span className="pill">
             Trend points: {shownPoints}

@@ -48,6 +48,14 @@
 - Browser smoke checks target desktop Chromium + iPhone + small Android viewports.
 - Keep stable `data-testid` hooks for core controls used by agent/E2E flows.
 - Repo-level `AGENTS.md` defines an automatic UI/design audit loop (`npm run audit:design`) for Codex.
+- Redesign research docs live in `docs/design/` and are the source of truth for target UX decisions:
+  - `docs/design/RESEARCH_METHOD.md`
+  - `docs/design/UX_RESEARCH_CORPUS.md`
+  - `docs/design/DESIGN_PRINCIPLES.md`
+  - `docs/design/TARGET_EXPERIENCE_SPEC.md`
+  - `docs/design/VISUAL_SYSTEM_SPEC.md`
+  - `docs/design/COMPETITOR_TEARDOWN.md`
+  - `docs/design/DECISION_MATRIX.md`
 
 ## Project Structure
 
@@ -56,6 +64,14 @@
 |-- README.md
 |-- docs/
 |   |-- CONTEXT.md
+|   |-- design/
+|   |   |-- RESEARCH_METHOD.md
+|   |   |-- UX_RESEARCH_CORPUS.md
+|   |   |-- DESIGN_PRINCIPLES.md
+|   |   |-- TARGET_EXPERIENCE_SPEC.md
+|   |   |-- VISUAL_SYSTEM_SPEC.md
+|   |   |-- COMPETITOR_TEARDOWN.md
+|   |   `-- DECISION_MATRIX.md
 |   `-- JOURNAL.md
 |-- scripts/
 |   |-- build_lichess_puzzles.py
@@ -74,7 +90,13 @@
 |   |   |-- BoardView.tsx
 |   |   |-- Dashboard.tsx
 |   |   |-- ExerciseCard.tsx
-|   |   `-- ProgressView.tsx
+|   |   |-- FocusedTrainingOverlay.tsx
+|   |   |-- ProgressView.tsx
+|   |   |-- RunStatusPanel.tsx
+|   |   |-- SessionMomentum.tsx
+|   |   |-- TabNav.tsx
+|   |   |-- TopBar.tsx
+|   |   `-- TrainingSetupPanel.tsx
 |   |-- engine/
 |   |   |-- exercises.ts
 |   |   `-- session.ts
@@ -98,3 +120,4 @@
 - Keep browser smoke flows under `e2e/smoke/*.spec.ts`.
 - Keep design capture flows under `e2e/design/*.spec.ts`.
 - Commit docs updates with code changes whenever rules/workflow change.
+- For redesign work, treat `docs/design/TARGET_EXPERIENCE_SPEC.md` + `docs/design/VISUAL_SYSTEM_SPEC.md` as canonical "what" specs before implementation changes.

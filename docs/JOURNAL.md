@@ -1,3 +1,18 @@
+## [2026-02-19]
+- Done: Implemented `docs/design/IMPLEMENTATION_PLAN.md` with a full UI-shell refactor (`TopBar`, `TabNav`, `TrainingSetupPanel`, `RunStatusPanel`, `FocusedTrainingOverlay`) while preserving existing exercise/session domain logic.
+- Done: Added explicit typed UI state surface in `src/types.ts` and surfaced required runtime states (catalog/sync/delete/loading/offline/no-active/focused) near affected controls.
+- Done: Rebuilt `src/styles.css` around semantic design tokens (typography, spacing, colors, motion), improved focused-mode ergonomics, and fixed mobile reveal reachability regression found in design audit.
+- Done: Updated progress filter defaults to follow current training context and improved trend empty-state messaging.
+- Done: Passed full validation (`npm run test`, `npm run build`, `npm run e2e:smoke`, `npm run e2e:design`).
+- Decisions: Keep the premium-dark direction and compact focused-mode metrics, with mobile-first board sizing to keep grading controls in-viewport.
+- Next: Review design screenshots/traces in `test-results/` and run one manual Playwright MCP polish pass on typography density and tablet spacing.
+
+## [2026-02-19]
+- Done: Completed comprehensive redesign research pack with source-traceable UX decisions (`RESEARCH_METHOD`, `UX_RESEARCH_CORPUS`, `DESIGN_PRINCIPLES`, `TARGET_EXPERIENCE_SPEC`, `VISUAL_SYSTEM_SPEC`, `COMPETITOR_TEARDOWN`, `DECISION_MATRIX`).
+- Done: Updated `docs/CONTEXT.md` to include redesign knowledge base links and canon for future implementation sessions.
+- Decisions: Locked target design posture to premium minimal training-lab UX for serious improvers (5-60 min/day), while keeping current 2-drill scope and future drill extensibility.
+- Next: Implement the redesigned UI against `docs/TARGET_EXPERIENCE_SPEC.md` and `docs/VISUAL_SYSTEM_SPEC.md`, then run `npm run audit:design` and fix the highest-severity findings first.
+
 ## [2026-02-18]
 - Done: Made Codex web profile default in `.codex/config.toml` and required Playwright MCP startup, so browser tooling is auto-enabled when launching Codex in-repo.
 - Done: Added one-shot `npm run audit:design` pipeline (unit tests + build + smoke + design-capture Playwright runs).
